@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: raw_lamda
+    schema: raw_lamda
+    tables:
+      - name: lamda_samples
+        description: Raw IQSeC-Lab/LAMDA rows loaded from Hugging Face by dlt.
+        columns:
+          - name: dataset_id
+            tests:
+              - not_null
+          - name: config_name
+            tests:
+              - not_null
+          - name: split_name
+            tests:
+              - not_null
+          - name: row_number
+            tests:
+              - not_null
+          - name: hash
+            tests:
+              - not_null
+          - name: label
+            tests:
+              - not_null

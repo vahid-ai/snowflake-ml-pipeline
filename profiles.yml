@@ -1,0 +1,8 @@
+snowflake_ml_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: data/lamda.duckdb
+      schema: analytics
+      threads: 4

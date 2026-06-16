@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local data and generated warehouse artifacts
+data/
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+
+# dlt/dbt runtime state
+.dlt/
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# Benchmark outputs
+bench/artifacts/
