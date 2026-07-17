@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "datasets>=5.0.0",
     "dbt-duckdb>=1.10.1",
-    "dlt[duckdb]>=1.28.0",
+    "dlt[duckdb,snowflake]>=1.28.0",
     "duckdb>=1.5.3",
     "kaggle>=2.2.2",
     "kagglehub>=1.0.2",
