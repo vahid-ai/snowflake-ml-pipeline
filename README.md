@@ -1,9 +1,38 @@
 # snowflake-ml-pipeline
 
-Local dlt and dbt pipeline for loading the Hugging Face dataset
-`IQSeC-Lab/LAMDA` into DuckDB.
+dlt and dbt pipeline that ingests the Hugging Face dataset `IQSeC-Lab/LAMDA`
+**directly into Snowflake**. The Parquet shards are streamed from the Hub in
+Arrow batches and handed to dlt, so the dataset is never downloaded to a local
+database or file.
 
-## Load data
+## Configure Snowflake
+
+Copy `.env.example` and export the variables (both the dlt pipeline and the dbt
+profile read them):
+
+```powershell
+Copy-Item .env.example .env
+```
+
+| Variable | Purpose |
+| --- | --- |
+| `SNOWFLAKE_ACCOUNT` | Account identifier, e.g. `abc12345.us-east-1` |
+| `SNOWFLAKE_USER` | Login name |
+| `SNOWFLAKE_PASSWORD` | Password auth (omit when using key-pair) |
+| `SNOWFLAKE_PRIVATE_KEY_PATH` / `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` | Key-pair auth |
+| `SNOWFLAKE_AUTHENTICATOR` | Optional, e.g. `externalbrowser` |
+| `SNOWFLAKE_DATABASE` | Target database |
+| `SNOWFLAKE_WAREHOUSE` | Warehouse used for loading and dbt |
+| `SNOWFLAKE_ROLE` | Role with create-schema rights on the database |
+| `SNOWFLAKE_SCHEMA` | dbt target schema, defaults to `analytics` |
+| `HF_TOKEN` | Only needed for gated or private Hugging Face datasets |
+
+Instead of these variables you can use any dlt config provider for the
+ingestion side, e.g. `.dlt/secrets.toml` or `DESTINATION__SNOWFLAKE__*`
+variables; the loader falls back to them when the `SNOWFLAKE_*` variables are
+unset.
+
+## Ingest data into Snowflake
 
 ```powershell
 uv run python scripts/load_lamda.py
@@ -12,11 +41,19 @@ uv run python scripts/load_lamda.py
 For a fast smoke test:
 
 ```powershell
-uv run python scripts/load_lamda.py --limit-per-file 10
+uv run python scripts/load_lamda.py --limit-per-file 10 --max-files 2
 ```
 
-The DuckDB database is written to `data/lamda.duckdb`. The `data/` directory
-and DuckDB files are intentionally ignored by Git.
+The pipeline writes two tables into the `raw_lamda` schema of
+`SNOWFLAKE_DATABASE`:
+
+- `lamda_samples` — dataset rows, prefixed with `dataset_id`, `config_name`,
+  `split_name`, `row_number`, and `source_file`
+- `lamda_files` — the Hugging Face Parquet manifest that was ingested
+
+Both are loaded with `write_disposition="replace"`, so a run fully refreshes the
+schema. Use `--dataset-name` to load into a different Snowflake schema and
+`--batch-size` to tune the Arrow batch size streamed from the Hub.
 
 ## Run dbt
 
@@ -31,5 +68,5 @@ uv run dbt test --profiles-dir .
 uv run python -m bench.run
 ```
 
-Benchmark metrics, flame graphs, and benchmark DuckDB files are written under
-`bench/artifacts/`, which is ignored by Git.
+Benchmark metrics and flame graphs are written under `bench/artifacts/`, which
+is ignored by Git.

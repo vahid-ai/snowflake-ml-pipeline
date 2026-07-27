@@ -1,30 +1,35 @@
 # Benchmark Harness
 
-This suite compares source-to-destination pipeline implementations and writes
-per-run metrics under `bench/artifacts/`, which is ignored by Git.
+This suite compares Hugging Face → Snowflake ingestion methods and writes
+per-run metrics under `bench/artifacts/`, which is ignored by Git. It uses the
+same Snowflake configuration as the loader (see the root `README.md`).
 
 ## Scenarios
 
-- `manifest_parquet_duckdb`: dlt loads a Hugging Face Parquet file manifest,
-  then DuckDB materializes the remote Parquet files into a local DuckDB table.
-- `streaming_dlt_duckdb`: Hugging Face `datasets` streaming rows are batched
-  through dlt into a local DuckDB table.
+- `arrow_parquet_snowflake`: Hub-hosted Parquet shards are read over fsspec in
+  Arrow batches and loaded into Snowflake by dlt as Parquet.
+- `streaming_dlt_snowflake`: Hugging Face `datasets` streaming rows are batched
+  through dlt into Snowflake.
+
+Each scenario loads into its own `bench_<scenario>` schema so the production
+`raw_lamda` schema is untouched. Pass `--drop-destination-dataset` to drop those
+benchmark schemas once metrics are collected.
 
 ## Metrics
 
-Each run writes `metrics.json`, `summary.json`, an HTML pyinstrument flame graph,
-and a benchmark-local DuckDB database. Metrics include:
+Each run writes `metrics.json`, `summary.json`, and an HTML pyinstrument flame
+graph. Metrics include:
 
 - total wall/process time
 - wall/process time by named pipeline stage
 - peak RSS and Python allocation peak
 - source file count and optional source ingress byte estimate
-- destination database bytes
+- destination bytes reported by Snowflake `information_schema`
 - rows loaded and transformed
 
 ## Examples
 
-Smoke benchmark both built-in scenarios:
+Smoke benchmark both scenarios:
 
 ```powershell
 uv run python -m bench.run
@@ -33,10 +38,10 @@ uv run python -m bench.run
 By default the smoke run limits Parquet ingestion to 4 files and streaming to
 4 Hugging Face splits. Use `--full` when you explicitly want full-dataset runs.
 
-Benchmark only the Parquet materialization path on the full dataset:
+Benchmark only the Parquet path on the full dataset:
 
 ```powershell
-uv run python -m bench.run --scenario manifest_parquet_duckdb --full
+uv run python -m bench.run --scenario arrow_parquet_snowflake --full
 ```
 
 Disable flame graph generation:

@@ -9,11 +9,11 @@ wheels/
 # Virtual environments
 .venv
 
-# Local data and generated warehouse artifacts
+# Local credentials
+.env
+
+# Local scratch data
 data/
-*.duckdb
-*.duckdb.wal
-*.duckdb.tmp
 
 # dlt/dbt runtime state
 .dlt/
