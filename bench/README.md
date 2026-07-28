@@ -2,7 +2,10 @@
 
 This suite compares Hugging Face → Snowflake ingestion methods and writes
 per-run metrics under `bench/artifacts/`, which is ignored by Git. It uses the
-same Snowflake configuration as the loader (see the root `README.md`).
+same Snowflake configuration as the loader — see
+[`docs/authentication.md`](../docs/authentication.md). Interactive methods such
+as `externalbrowser` are a poor fit here, since a benchmark run opens several
+connections.
 
 ## Scenarios
 

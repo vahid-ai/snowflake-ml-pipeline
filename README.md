@@ -7,32 +7,35 @@ database or file.
 
 ## Configure Snowflake
 
-Copy `.env.example` and export the variables (both the dlt pipeline and the dbt
-profile read them):
+Copy `.env.example` and fill it in — both the dlt pipeline and the dbt profile
+read the same variables:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-| Variable | Purpose |
-| --- | --- |
-| `SNOWFLAKE_ACCOUNT` | Account identifier, e.g. `abc12345.us-east-1` |
-| `SNOWFLAKE_USER` | Login name |
-| `SNOWFLAKE_PASSWORD` | Password auth (omit when using key-pair or a token) |
-| `SNOWFLAKE_PRIVATE_KEY` | Key-pair auth with an inline PEM or base64 DER key, handy in CI (ingestion only) |
-| `SNOWFLAKE_PRIVATE_KEY_PATH` / `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` | Key-pair auth, PKCS#8 PEM key |
-| `SNOWFLAKE_AUTHENTICATOR` | Optional, e.g. `programmatic_access_token`, `oauth`, `externalbrowser` |
-| `SNOWFLAKE_TOKEN` | Token for `programmatic_access_token` or `oauth` authenticators |
-| `SNOWFLAKE_DATABASE` | Target database |
-| `SNOWFLAKE_WAREHOUSE` | Warehouse used for loading and dbt |
-| `SNOWFLAKE_ROLE` | Role with create-schema rights on the database |
-| `SNOWFLAKE_SCHEMA` | dbt target schema, defaults to `analytics` |
-| `HF_TOKEN` | Only needed for gated or private Hugging Face datasets |
+A minimal key-pair setup, which is the recommended method:
 
-Instead of these variables you can use any dlt config provider for the
-ingestion side, e.g. `.dlt/secrets.toml` or `DESTINATION__SNOWFLAKE__*`
-variables; the loader falls back to them when the `SNOWFLAKE_*` variables are
-unset.
+```bash
+SNOWFLAKE_ACCOUNT=myorg-my_account       # or legacy abc12345.us-east-1
+SNOWFLAKE_USER=LAMDA_LOADER
+SNOWFLAKE_PRIVATE_KEY_PATH=/home/you/.snowflake/lamda_loader.p8
+SNOWFLAKE_DATABASE=LAMDA
+SNOWFLAKE_WAREHOUSE=LOADING_WH
+SNOWFLAKE_ROLE=LAMDA_LOADER              # needs CREATE SCHEMA on the database
+```
+
+**[docs/authentication.md](docs/authentication.md)** documents every supported
+method — key pair, programmatic access tokens, password, password + MFA,
+external browser SSO, OAuth, and Okta — with the SQL and shell steps to set each
+one up, the `.dlt/secrets.toml` alternative for the ingestion side, Hugging Face
+tokens for gated datasets, and a troubleshooting table.
+
+Check the configuration before loading anything:
+
+```powershell
+uv run dbt debug --profiles-dir .
+```
 
 ## Ingest data into Snowflake
 
