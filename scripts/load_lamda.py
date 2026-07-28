@@ -134,8 +134,10 @@ def lamda_samples(
 def snowflake_credentials() -> dict[str, Any] | None:
     """Build dlt Snowflake credentials from the environment.
 
-    Returns ``None`` when nothing is set so dlt can fall back to its own config
-    providers (``.dlt/secrets.toml`` or ``DESTINATION__SNOWFLAKE__*`` variables).
+    Supports password, key-pair, and token auth (programmatic access tokens or
+    OAuth, selected with ``SNOWFLAKE_AUTHENTICATOR``). Returns ``None`` when
+    nothing is set so dlt can fall back to its own config providers
+    (``.dlt/secrets.toml`` or ``DESTINATION__SNOWFLAKE__*`` variables).
     """
     credentials = {
         "host": os.getenv("SNOWFLAKE_ACCOUNT"),
@@ -145,6 +147,7 @@ def snowflake_credentials() -> dict[str, Any] | None:
         "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
         "role": os.getenv("SNOWFLAKE_ROLE"),
         "authenticator": os.getenv("SNOWFLAKE_AUTHENTICATOR"),
+        "token": os.getenv("SNOWFLAKE_TOKEN"),
         "private_key": os.getenv("SNOWFLAKE_PRIVATE_KEY"),
         "private_key_path": os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH"),
         "private_key_passphrase": os.getenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"),

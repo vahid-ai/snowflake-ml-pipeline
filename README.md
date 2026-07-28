@@ -18,9 +18,11 @@ Copy-Item .env.example .env
 | --- | --- |
 | `SNOWFLAKE_ACCOUNT` | Account identifier, e.g. `abc12345.us-east-1` |
 | `SNOWFLAKE_USER` | Login name |
-| `SNOWFLAKE_PASSWORD` | Password auth (omit when using key-pair) |
-| `SNOWFLAKE_PRIVATE_KEY_PATH` / `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` | Key-pair auth |
-| `SNOWFLAKE_AUTHENTICATOR` | Optional, e.g. `externalbrowser` |
+| `SNOWFLAKE_PASSWORD` | Password auth (omit when using key-pair or a token) |
+| `SNOWFLAKE_PRIVATE_KEY` | Key-pair auth with an inline PEM or base64 DER key, handy in CI (ingestion only) |
+| `SNOWFLAKE_PRIVATE_KEY_PATH` / `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` | Key-pair auth, PKCS#8 PEM key |
+| `SNOWFLAKE_AUTHENTICATOR` | Optional, e.g. `programmatic_access_token`, `oauth`, `externalbrowser` |
+| `SNOWFLAKE_TOKEN` | Token for `programmatic_access_token` or `oauth` authenticators |
 | `SNOWFLAKE_DATABASE` | Target database |
 | `SNOWFLAKE_WAREHOUSE` | Warehouse used for loading and dbt |
 | `SNOWFLAKE_ROLE` | Role with create-schema rights on the database |
