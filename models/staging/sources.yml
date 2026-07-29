@@ -2,10 +2,12 @@ version: 2
 
 sources:
   - name: raw_lamda
+    database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
     schema: raw_lamda
     tables:
       - name: lamda_samples
-        description: Raw IQSeC-Lab/LAMDA rows loaded from Hugging Face by dlt.
+        description: >
+          Raw IQSeC-Lab/LAMDA rows streamed from Hugging Face into Snowflake by dlt.
         columns:
           - name: dataset_id
             tests:

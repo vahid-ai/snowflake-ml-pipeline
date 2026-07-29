@@ -1,48 +1,68 @@
 from __future__ import annotations
 
-import json
 import urllib.request
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import dlt
-import duckdb
 from datasets import get_dataset_config_names, get_dataset_split_names, load_dataset
-from dlt.destinations import duckdb as dlt_duckdb
 
 from bench.harness import BenchmarkContext
 from scripts.load_lamda import (
-    DEFAULT_DATASET_NAME,
     DATASET_ID,
-    materialize_samples,
+    DEFAULT_BATCH_SIZE,
+    build_pipeline,
+    lamda_files,
+    lamda_samples,
     parquet_manifest,
 )
 
 
-def _db_counts(db_path: Path, table: str = "lamda_samples") -> dict[str, int]:
-    con = duckdb.connect(str(db_path), read_only=True)
-    try:
-        rows = con.sql(
+def _query(pipeline: dlt.Pipeline, sql: str) -> list[tuple]:
+    with pipeline.sql_client() as client:
+        with client.execute_query(sql) as cursor:
+            return cursor.fetchall()
+
+
+def _db_counts(pipeline: dlt.Pipeline, table: str = "lamda_samples") -> dict[str, int]:
+    with pipeline.sql_client() as client:
+        qualified = client.make_qualified_table_name(table)
+        with client.execute_query(
             f"""
             select config_name, split_name, count(*) as row_count
-            from {DEFAULT_DATASET_NAME}.{table}
+            from {qualified}
             group by 1, 2
             order by 1, 2
             """
-        ).fetchall()
-    finally:
-        con.close()
+        ) as cursor:
+            rows = cursor.fetchall()
 
     return {f"{config}.{split}": int(row_count) for config, split, row_count in rows}
 
 
-def _table_count(db_path: Path, table: str) -> int:
-    con = duckdb.connect(str(db_path), read_only=True)
-    try:
-        return int(con.sql(f"select count(*) from {DEFAULT_DATASET_NAME}.{table}").fetchone()[0])
-    finally:
-        con.close()
+def _table_count(pipeline: dlt.Pipeline, table: str) -> int:
+    with pipeline.sql_client() as client:
+        qualified = client.make_qualified_table_name(table)
+        with client.execute_query(f"select count(*) from {qualified}") as cursor:
+            return int(cursor.fetchone()[0])
+
+
+def _destination_bytes(pipeline: dlt.Pipeline) -> int:
+    """Storage footprint of the benchmark schema, straight from Snowflake."""
+    rows = _query(
+        pipeline,
+        f"""
+        select coalesce(sum(bytes), 0)
+        from information_schema.tables
+        where table_schema = upper('{pipeline.dataset_name}')
+        """,
+    )
+    return int(rows[0][0])
+
+
+def _drop_dataset(pipeline: dlt.Pipeline) -> None:
+    with pipeline.sql_client() as client:
+        client.drop_dataset()
 
 
 def _probe_remote_bytes(files: list[dict], enabled: bool) -> int | None:
@@ -57,11 +77,6 @@ def _probe_remote_bytes(files: list[dict], enabled: bool) -> int | None:
             if length is not None:
                 total += int(length)
     return total
-
-
-@dlt.resource(name="lamda_files", write_disposition="replace")
-def selected_lamda_files(files: list[dict]) -> Iterator[dict]:
-    yield from files
 
 
 def _streaming_records(
@@ -118,14 +133,39 @@ def streaming_lamda_samples(
     )
 
 
-def benchmark_manifest_parquet_duckdb(
+def _finalize(
+    context: BenchmarkContext,
+    pipeline: dlt.Pipeline,
+    options: dict[str, Any],
+    manifest_table: bool = False,
+) -> None:
+    with context.stage("summarize_destination"):
+        counts = _db_counts(pipeline)
+        destination_bytes = _destination_bytes(pipeline)
+        manifest_rows = _table_count(pipeline, "lamda_files") if manifest_table else None
+
+    context.set_counter("destination_dataset", pipeline.dataset_name)
+    context.set_counter("destination_rows_by_partition", counts)
+    context.set_counter("destination_rows", sum(counts.values()))
+    context.set_counter("destination_egress_bytes", destination_bytes)
+    context.set_counter("transformed_rows", sum(counts.values()))
+    if manifest_rows is not None:
+        context.set_counter("manifest_rows", manifest_rows)
+
+    if options.get("drop_destination_dataset"):
+        with context.stage("drop_destination_dataset"):
+            _drop_dataset(pipeline)
+
+
+def benchmark_arrow_parquet_snowflake(
     context: BenchmarkContext,
     options: dict[str, Any],
 ) -> None:
+    """Stream Hub-hosted Parquet shards through Arrow batches into Snowflake."""
     limit_per_file = options.get("limit_per_file")
     max_files = options.get("max_files")
+    batch_size = int(options.get("arrow_batch_size") or DEFAULT_BATCH_SIZE)
     probe_remote_bytes = bool(options.get("probe_remote_bytes", True))
-    db_path = context.artifact_dir / "manifest_parquet.duckdb"
 
     with context.stage("discover_source_files"):
         files = parquet_manifest()
@@ -140,40 +180,37 @@ def benchmark_manifest_parquet_duckdb(
     if ingress_bytes is not None:
         context.set_counter("source_ingress_bytes", ingress_bytes)
 
-    with context.stage("dlt_load_file_manifest"):
-        pipeline = dlt.pipeline(
-            pipeline_name=f"bench_{context.scenario}",
-            destination=dlt_duckdb(credentials=str(db_path)),
-            dataset_name=DEFAULT_DATASET_NAME,
+    pipeline = build_pipeline(
+        dataset_name=f"bench_{context.scenario}",
+        pipeline_name=f"bench_{context.scenario}",
+    )
+
+    with context.stage("dlt_stream_huggingface_parquet_to_snowflake"):
+        pipeline.run(
+            [
+                lamda_files(files),
+                lamda_samples(
+                    files=files,
+                    batch_size=batch_size,
+                    limit_per_file=limit_per_file,
+                ),
+            ],
+            loader_file_format="parquet",
         )
-        pipeline.run(selected_lamda_files(files))
 
-    with context.stage("duckdb_materialize_remote_parquet"):
-        materialize_samples(db_path=db_path, files=files, limit_per_file=limit_per_file)
-
-    with context.stage("summarize_destination"):
-        counts = _db_counts(db_path)
-        manifest_rows = _table_count(db_path, "lamda_files")
-        destination_bytes = db_path.stat().st_size
-
-    context.set_counter("destination_rows_by_partition", counts)
-    context.set_counter("destination_rows", sum(counts.values()))
-    context.set_counter("manifest_rows", manifest_rows)
-    context.set_counter("destination_egress_bytes", destination_bytes)
-    context.set_counter("transformed_rows", sum(counts.values()))
-    context.add_artifact("duckdb", db_path)
+    _finalize(context, pipeline, options, manifest_table=True)
 
 
-def benchmark_streaming_dlt_duckdb(
+def benchmark_streaming_dlt_snowflake(
     context: BenchmarkContext,
     options: dict[str, Any],
 ) -> None:
+    """Stream Hugging Face `datasets` rows through dlt into Snowflake."""
     limit_per_split = int(options.get("limit_per_split") or 100)
     batch_size = int(options.get("batch_size") or 1_000)
     max_splits = options.get("max_splits")
     if max_splits is not None:
         max_splits = int(max_splits)
-    db_path = context.artifact_dir / "streaming_dlt.duckdb"
 
     with context.stage("discover_configs_and_splits"):
         configs: dict[str, list[str]] = {}
@@ -196,12 +233,12 @@ def benchmark_streaming_dlt_duckdb(
         sum(len(splits) for splits in configs.values()) * limit_per_split,
     )
 
-    with context.stage("dlt_stream_huggingface_to_duckdb"):
-        pipeline = dlt.pipeline(
-            pipeline_name=f"bench_{context.scenario}",
-            destination=dlt_duckdb(credentials=str(db_path)),
-            dataset_name=DEFAULT_DATASET_NAME,
-        )
+    pipeline = build_pipeline(
+        dataset_name=f"bench_{context.scenario}",
+        pipeline_name=f"bench_{context.scenario}",
+    )
+
+    with context.stage("dlt_stream_huggingface_rows_to_snowflake"):
         pipeline.run(
             streaming_lamda_samples(
                 limit_per_split=limit_per_split,
@@ -210,39 +247,12 @@ def benchmark_streaming_dlt_duckdb(
             )
         )
 
-    with context.stage("summarize_destination"):
-        counts = _db_counts(db_path)
-        destination_bytes = db_path.stat().st_size
-
-    context.set_counter("destination_rows_by_partition", counts)
-    context.set_counter("destination_rows", sum(counts.values()))
-    context.set_counter("destination_egress_bytes", destination_bytes)
-    context.set_counter("transformed_rows", sum(counts.values()))
-    context.set_counter(
-        "estimated_record_payload_bytes",
-        _estimate_payload_bytes(db_path),
-    )
-    context.add_artifact("duckdb", db_path)
-
-
-def _estimate_payload_bytes(db_path: Path) -> int:
-    con = duckdb.connect(str(db_path), read_only=True)
-    try:
-        return int(
-            con.sql(
-                f"""
-                select coalesce(sum(length(to_json(t))), 0)::bigint
-                from {DEFAULT_DATASET_NAME}.lamda_samples as t
-                """
-            ).fetchone()[0]
-        )
-    finally:
-        con.close()
+    _finalize(context, pipeline, options)
 
 
 SCENARIOS = {
-    "manifest_parquet_duckdb": benchmark_manifest_parquet_duckdb,
-    "streaming_dlt_duckdb": benchmark_streaming_dlt_duckdb,
+    "arrow_parquet_snowflake": benchmark_arrow_parquet_snowflake,
+    "streaming_dlt_snowflake": benchmark_streaming_dlt_snowflake,
 }
 
 

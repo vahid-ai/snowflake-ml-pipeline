@@ -1,19 +1,31 @@
+"""Ingest the IQSeC-Lab/LAMDA Hugging Face dataset straight into Snowflake with dlt.
+
+The Parquet shards are streamed from the Hugging Face Hub in Arrow batches and
+handed to dlt, so no copy of the dataset is materialized on the local disk.
+"""
+
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import dlt
-import duckdb
+import pyarrow as pa
+import pyarrow.parquet as pq
 from datasets import get_dataset_config_names
-from dlt.destinations import duckdb as dlt_duckdb
-from huggingface_hub import hf_hub_url, list_repo_files
+from dlt.destinations import snowflake as dlt_snowflake
+from huggingface_hub import HfFileSystem, hf_hub_url, list_repo_files
 
 
 DATASET_ID = "IQSeC-Lab/LAMDA"
-DEFAULT_DB_PATH = Path("data/lamda.duckdb")
 DEFAULT_DATASET_NAME = "raw_lamda"
+DEFAULT_BATCH_SIZE = 25_000
+PIPELINE_NAME = "lamda_huggingface"
+
+SOURCE_COLUMNS = ("dataset_id", "config_name", "split_name", "row_number", "source_file")
 
 
 def parquet_manifest() -> list[dict]:
@@ -42,6 +54,7 @@ def parquet_manifest() -> list[dict]:
                 "config_name": config_name,
                 "split_name": split_name,
                 "repo_path": repo_path,
+                "fs_path": f"datasets/{DATASET_ID}/{repo_path}",
                 "url": hf_hub_url(DATASET_ID, repo_path, repo_type="dataset"),
             }
         )
@@ -50,138 +63,158 @@ def parquet_manifest() -> list[dict]:
 
 
 @dlt.resource(name="lamda_files", write_disposition="replace")
-def lamda_files() -> Iterator[dict]:
-    yield from parquet_manifest()
+def lamda_files(files: list[dict] | None = None) -> Iterator[dict]:
+    yield from files if files is not None else parquet_manifest()
 
 
-def quote_sql(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
+def _with_source_columns(table: pa.Table, file: dict, start_row: int) -> pa.Table:
+    """Prefix a batch with the provenance columns the dbt models rely on."""
+    row_count = table.num_rows
+    source_columns = {
+        "dataset_id": pa.array([file["dataset_id"]] * row_count, pa.string()),
+        "config_name": pa.array([file["config_name"]] * row_count, pa.string()),
+        "split_name": pa.array([file["split_name"]] * row_count, pa.string()),
+        "row_number": pa.array(range(start_row, start_row + row_count), pa.int64()),
+        "source_file": pa.array([file["repo_path"]] * row_count, pa.string()),
+    }
+
+    for name in SOURCE_COLUMNS:
+        if name in table.column_names:
+            table = table.drop_columns(name)
+
+    for position, name in enumerate(SOURCE_COLUMNS):
+        table = table.add_column(position, name, source_columns[name])
+
+    return table
 
 
-def quote_identifier(value: str) -> str:
-    return '"' + value.replace('"', '""') + '"'
+def _stream_remote_parquet(
+    fs: HfFileSystem,
+    file: dict,
+    batch_size: int,
+    limit_per_file: int | None,
+) -> Iterator[pa.Table]:
+    """Yield Arrow batches read directly from a Hub-hosted Parquet shard."""
+    with fs.open(file["fs_path"], "rb") as handle:
+        parquet_file = pq.ParquetFile(handle)
+        emitted = 0
+
+        for batch in parquet_file.iter_batches(batch_size=batch_size):
+            if limit_per_file is not None:
+                remaining = limit_per_file - emitted
+                if remaining <= 0:
+                    return
+                if batch.num_rows > remaining:
+                    batch = batch.slice(0, remaining)
+
+            table = _with_source_columns(pa.Table.from_batches([batch]), file, emitted)
+            emitted += table.num_rows
+            yield table
 
 
-def materialize_samples(
-    db_path: Path,
-    files: list[dict],
+@dlt.resource(name="lamda_samples", write_disposition="replace")
+def lamda_samples(
+    files: list[dict] | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
     limit_per_file: int | None = None,
-) -> None:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    urls = "[" + ", ".join(quote_sql(file["url"]) for file in files) + "]"
-    con = duckdb.connect(str(db_path))
-    con.execute("set preserve_insertion_order = false")
-    con.execute("set threads = 2")
-    con.execute(f"create schema if not exists {DEFAULT_DATASET_NAME}")
-
-    if limit_per_file is not None:
-        materialize_limited_samples(con, files, limit_per_file)
-        con.close()
-        return
-
-    urls = "[" + ", ".join(quote_sql(file["url"]) for file in files) + "]"
-    if limit_per_file is None:
-        row_number_expression = "0::bigint as row_number"
-    else:
-        row_number_expression = (
-            "row_number() over (partition by source_file order by hash) - 1 as row_number"
-        )
-
-    con.execute(
-        f"""
-        create or replace table {DEFAULT_DATASET_NAME}.lamda_samples as
-        with scanned as (
-            select
-                *,
-                filename as source_file,
-                regexp_extract(filename, '/(Baseline|var_thresh_0\\.01)/', 1) as config_name,
-                regexp_extract(filename, '_(train|test)\\.parquet', 1) as split_name
-            from read_parquet({urls}, union_by_name = true, filename = true)
-        ),
-        numbered as (
-            select
-                {quote_sql(DATASET_ID)} as dataset_id,
-                config_name,
-                split_name,
-                {row_number_expression},
-                source_file,
-                * exclude (filename, source_file, config_name, split_name)
-            from scanned
-        )
-        select *
-        from numbered
-        """
-    )
-    con.close()
-
-
-def materialize_limited_samples(
-    con: duckdb.DuckDBPyConnection,
-    files: list[dict],
-    limit_per_file: int,
-) -> None:
-    first_url = quote_sql(files[0]["url"])
-    con.execute(
-        f"""
-        create or replace table {DEFAULT_DATASET_NAME}.lamda_samples as
-        select
-            {quote_sql(DATASET_ID)} as dataset_id,
-            {quote_sql(files[0]["config_name"])} as config_name,
-            {quote_sql(files[0]["split_name"])} as split_name,
-            0::bigint as row_number,
-            {quote_sql(files[0]["url"])} as source_file,
-            *
-        from read_parquet({first_url})
-        limit 0
-        """
-    )
+    hf_token: str | None = None,
+) -> Iterator[pa.Table]:
+    files = files if files is not None else parquet_manifest()
+    fs = HfFileSystem(token=hf_token or os.getenv("HF_TOKEN"))
 
     for file in files:
-        con.execute(
-            f"""
-            insert into {DEFAULT_DATASET_NAME}.lamda_samples by name
-            select
-                {quote_sql(file["dataset_id"])} as dataset_id,
-                {quote_sql(file["config_name"])} as config_name,
-                {quote_sql(file["split_name"])} as split_name,
-                row_number() over (order by hash) - 1 as row_number,
-                {quote_sql(file["url"])} as source_file,
-                *
-            from (
-                select *
-                from read_parquet({quote_sql(file["url"])})
-                limit {limit_per_file}
-            )
-            """
+        yield from _stream_remote_parquet(
+            fs=fs,
+            file=file,
+            batch_size=batch_size,
+            limit_per_file=limit_per_file,
         )
 
 
-def run_pipeline(db_path: Path, limit_per_file: int | None = None) -> None:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    files = parquet_manifest()
+def snowflake_credentials() -> dict[str, Any] | None:
+    """Build dlt Snowflake credentials from the environment.
 
-    pipeline = dlt.pipeline(
-        pipeline_name="lamda_huggingface",
-        destination=dlt_duckdb(credentials=str(db_path)),
-        dataset_name=DEFAULT_DATASET_NAME,
+    Supports password, key-pair, and token auth (programmatic access tokens or
+    OAuth, selected with ``SNOWFLAKE_AUTHENTICATOR``). Returns ``None`` when
+    nothing is set so dlt can fall back to its own config providers
+    (``.dlt/secrets.toml`` or ``DESTINATION__SNOWFLAKE__*`` variables).
+    """
+    credentials = {
+        "host": os.getenv("SNOWFLAKE_ACCOUNT"),
+        "username": os.getenv("SNOWFLAKE_USER"),
+        "password": os.getenv("SNOWFLAKE_PASSWORD"),
+        "database": os.getenv("SNOWFLAKE_DATABASE"),
+        "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
+        "role": os.getenv("SNOWFLAKE_ROLE"),
+        "authenticator": os.getenv("SNOWFLAKE_AUTHENTICATOR"),
+        "token": os.getenv("SNOWFLAKE_TOKEN"),
+        "private_key": os.getenv("SNOWFLAKE_PRIVATE_KEY"),
+        "private_key_path": os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH"),
+        "private_key_passphrase": os.getenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"),
+    }
+    credentials = {key: value for key, value in credentials.items() if value}
+    return credentials or None
+
+
+def snowflake_destination(**kwargs: Any):
+    return dlt_snowflake(credentials=snowflake_credentials(), **kwargs)
+
+
+def build_pipeline(
+    dataset_name: str = DEFAULT_DATASET_NAME,
+    pipeline_name: str = PIPELINE_NAME,
+) -> dlt.Pipeline:
+    return dlt.pipeline(
+        pipeline_name=pipeline_name,
+        destination=snowflake_destination(),
+        dataset_name=dataset_name,
     )
-    load_info = pipeline.run(lamda_files())
+
+
+def run_pipeline(
+    dataset_name: str = DEFAULT_DATASET_NAME,
+    limit_per_file: int | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    max_files: int | None = None,
+) -> None:
+    files = parquet_manifest()
+    if max_files is not None:
+        files = files[:max_files]
+    if not files:
+        raise RuntimeError(f"No Parquet shards found for {DATASET_ID}")
+
+    pipeline = build_pipeline(dataset_name=dataset_name)
+    load_info = pipeline.run(
+        [
+            lamda_files(files),
+            lamda_samples(
+                files=files,
+                batch_size=batch_size,
+                limit_per_file=limit_per_file,
+            ),
+        ],
+        loader_file_format="parquet",
+    )
     print(load_info)
 
-    materialize_samples(db_path=db_path, files=files, limit_per_file=limit_per_file)
-    print(f"Materialized {len(files)} Parquet files into {db_path}")
+    row_counts = pipeline.last_trace.last_normalize_info.row_counts
+    loaded_rows = row_counts.get("lamda_samples", 0)
+    print(
+        f"Streamed {loaded_rows} rows from {len(files)} Hugging Face Parquet files "
+        f"into Snowflake schema {dataset_name}"
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Load the IQSeC-Lab/LAMDA Hugging Face dataset into DuckDB."
+        description=(
+            "Stream the IQSeC-Lab/LAMDA Hugging Face dataset directly into Snowflake with dlt."
+        )
     )
     parser.add_argument(
-        "--db-path",
-        type=Path,
-        default=DEFAULT_DB_PATH,
-        help="DuckDB database path. Defaults to data/lamda.duckdb.",
+        "--dataset-name",
+        default=DEFAULT_DATASET_NAME,
+        help="Destination Snowflake schema. Defaults to raw_lamda.",
     )
     parser.add_argument(
         "--limit-per-file",
@@ -189,9 +222,26 @@ def main() -> None:
         default=None,
         help="Optional row limit per Parquet file, useful for smoke tests.",
     )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=None,
+        help="Optional cap on the number of Parquet files to ingest.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help="Rows per Arrow batch streamed from Hugging Face.",
+    )
     args = parser.parse_args()
 
-    run_pipeline(db_path=args.db_path, limit_per_file=args.limit_per_file)
+    run_pipeline(
+        dataset_name=args.dataset_name,
+        limit_per_file=args.limit_per_file,
+        batch_size=args.batch_size,
+        max_files=args.max_files,
+    )
 
 
 if __name__ == "__main__":

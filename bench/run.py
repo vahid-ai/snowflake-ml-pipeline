@@ -7,11 +7,12 @@ from pathlib import Path
 
 from bench.harness import run_scenario, write_summary
 from bench.lamda_scenarios import get_scenario, scenario_names
+from scripts.load_lamda import DEFAULT_BATCH_SIZE
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Benchmark and compare dlt pipeline methods against local destinations."
+        description="Benchmark and compare dlt ingestion methods from Hugging Face into Snowflake."
     )
     parser.add_argument(
         "--scenario",
@@ -24,19 +25,19 @@ def parse_args() -> argparse.Namespace:
         "--artifact-dir",
         type=Path,
         default=Path("bench/artifacts"),
-        help="Directory for metrics, flame graphs, and benchmark DuckDB files.",
+        help="Directory for metrics and flame graphs.",
     )
     parser.add_argument(
         "--limit-per-file",
         type=int,
         default=10,
-        help="Rows per Parquet file for the manifest_parquet_duckdb scenario. Omit with --full.",
+        help="Rows per Parquet file for the arrow_parquet_snowflake scenario. Omit with --full.",
     )
     parser.add_argument(
         "--limit-per-split",
         type=int,
         default=100,
-        help="Rows per Hugging Face split for the streaming_dlt_duckdb scenario.",
+        help="Rows per Hugging Face split for the streaming_dlt_snowflake scenario.",
     )
     parser.add_argument(
         "--max-files",
@@ -57,9 +58,20 @@ def parse_args() -> argparse.Namespace:
         help="Streaming dlt batch size.",
     )
     parser.add_argument(
+        "--arrow-batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help="Rows per Arrow batch streamed from Hugging Face Parquet shards.",
+    )
+    parser.add_argument(
+        "--drop-destination-dataset",
+        action="store_true",
+        help="Drop each benchmark schema in Snowflake once its metrics are collected.",
+    )
+    parser.add_argument(
         "--full",
         action="store_true",
-        help="Run full Parquet materialization instead of the default smoke-size benchmark.",
+        help="Ingest every Parquet shard instead of the default smoke-size benchmark.",
     )
     parser.add_argument(
         "--no-profile",
@@ -88,7 +100,9 @@ def main() -> None:
         "max_files": None if args.full else args.max_files,
         "max_splits": None if args.full else args.max_splits,
         "batch_size": args.batch_size,
+        "arrow_batch_size": args.arrow_batch_size,
         "probe_remote_bytes": not args.no_source_byte_probe,
+        "drop_destination_dataset": args.drop_destination_dataset,
     }
 
     metrics = []
