@@ -1,13 +1,17 @@
-# Snowflake and Hugging Face authentication
+# Snowflake, R2, and Hugging Face authentication
 
-This project authenticates in two places:
+This project authenticates in three places:
 
 - **Snowflake**, for the dlt ingestion pipeline (`scripts/load_lamda.py`, `bench/`)
   and for dbt (`profiles.yml`).
+- **Cloudflare R2**, for the Iceberg pipeline
+  (`scripts/load_lamda_r2_iceberg.py`) — see
+  [Cloudflare R2 and R2 Data Catalog](#cloudflare-r2-and-r2-data-catalog).
 - **Hugging Face**, for reading the source dataset. Public datasets need nothing.
 
-Both sides read the same environment variables, so one `.env` configures the
-whole pipeline. Copy `.env.example` to `.env` and fill in the method you picked.
+All of them read environment variables, so one `.env` configures the whole
+project. Copy `.env.example` to `.env` and fill in the destination you are
+running, or both destinations to benchmark them against each other.
 
 ## How credentials are resolved
 
@@ -331,6 +335,81 @@ DESTINATION__SNOWFLAKE__CREDENTIALS__PRIVATE_KEY_PATH=/home/you/.snowflake/lamda
 Note that dlt calls the account identifier `host`. `.dlt/` is git-ignored. This
 fallback covers the loader and benchmarks only — dbt always reads `SNOWFLAKE_*`
 through `profiles.yml`.
+
+## Cloudflare R2 and R2 Data Catalog
+
+The Iceberg pipeline authenticates twice against Cloudflare, because writing the
+data and registering the tables are separate services:
+
+| Variable | Purpose |
+| --- | --- |
+| `R2_ACCOUNT_ID` | Cloudflare account ID, used to derive the endpoints |
+| `R2_BUCKET` | R2 bucket that holds the Iceberg warehouse |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 **S3 API token** — writes the Parquet data and Iceberg metadata files |
+| `R2_CATALOG_TOKEN` | Cloudflare **API token** with R2 and catalog permissions — authenticates to R2 Data Catalog |
+| `R2_CATALOG_URI` | Catalog REST endpoint. Defaults to `https://catalog.cloudflarestorage.com/<account_id>/<bucket>` |
+| `R2_CATALOG_WAREHOUSE` | Warehouse name. Defaults to `<account_id>_<bucket>` |
+| `R2_S3_ENDPOINT` | Override for the S3 endpoint, normally derived as `https://<account_id>.r2.cloudflarestorage.com` |
+| `R2_REGION` | S3 region, `auto` for R2 |
+
+### 1. Create the bucket and enable its catalog
+
+```bash
+npx wrangler login
+npx wrangler r2 bucket create lamda
+npx wrangler r2 bucket catalog enable lamda
+```
+
+The `catalog enable` output prints the **Catalog URI** and **Warehouse** — set
+them as `R2_CATALOG_URI` and `R2_CATALOG_WAREHOUSE` if they differ from the
+defaults above. The same values appear on the catalog's page in the dashboard.
+
+### 2. Create the S3 API token
+
+In the dashboard, under R2 → **Manage API tokens**, create a token with **Object
+Read & Write** on the bucket. The access key ID and secret it returns become
+`R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. dlt passes these as AWS-style
+credentials with R2's endpoint, since R2 implements the S3 API.
+
+### 3. Create the catalog API token
+
+Iceberg clients must authenticate to the catalog with a token carrying **both R2
+and catalog permissions** — **Admin Read & Write** for a pipeline that creates
+tables, or **Admin Read only** for query-only clients. That token is
+`R2_CATALOG_TOKEN`.
+
+The pipeline also forwards the S3 keys to PyIceberg as `s3.access-key-id`,
+`s3.secret-access-key`, `s3.endpoint`, and `s3.region`, so reading and writing
+data files never depends on the catalog vending credentials.
+
+### How it reaches dlt
+
+`scripts/load_lamda_r2_iceberg.py` builds a `filesystem` destination pointed at
+`s3://$R2_BUCKET` with R2's endpoint, and publishes the catalog settings into
+dlt's `iceberg_catalog` config section:
+
+```python
+dlt.config["iceberg_catalog.iceberg_catalog_type"] = "rest"
+dlt.config["iceberg_catalog.iceberg_catalog_config"] = {...}
+```
+
+If you would rather not use environment variables, the same settings can live in
+`.dlt/secrets.toml`, which dlt reads natively:
+
+```toml
+[iceberg_catalog]
+iceberg_catalog_name = "r2_data_catalog"
+iceberg_catalog_type = "rest"
+
+[iceberg_catalog.iceberg_catalog_config]
+type = "rest"
+uri = "https://catalog.cloudflarestorage.com/<account_id>/<bucket>"
+warehouse = "<account_id>_<bucket>"
+token = "<catalog token>"
+```
+
+Any missing variable raises `R2ConfigurationError` naming the variable, before
+the pipeline touches the network.
 
 ## Hugging Face
 

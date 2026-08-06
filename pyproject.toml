@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "datasets>=5.0.0",
     "dbt-snowflake>=1.10.1",
-    "dlt[parquet,snowflake]>=1.28.0",
+    "dlt[filesystem,parquet,pyiceberg,s3,snowflake]>=1.28.0",
     "huggingface-hub>=0.35.0",
     "kaggle>=2.2.2",
     "kagglehub>=1.0.2",

@@ -16,6 +16,10 @@ from scripts.load_lamda import (
     lamda_samples,
     parquet_manifest,
 )
+from scripts.load_lamda_r2_iceberg import (
+    TABLE_FORMAT,
+    build_pipeline as build_r2_iceberg_pipeline,
+)
 
 
 def _query(pipeline: dlt.Pipeline, sql: str) -> list[tuple]:
@@ -250,8 +254,108 @@ def benchmark_streaming_dlt_snowflake(
     _finalize(context, pipeline, options)
 
 
+def _iceberg_table(pipeline: dlt.Pipeline, table: str):
+    catalog = pipeline.destination_client().get_open_table_catalog(TABLE_FORMAT)
+    return catalog.load_table(f"{pipeline.dataset_name}.{table}")
+
+
+def _iceberg_counts(pipeline: dlt.Pipeline, table: str = "lamda_samples") -> dict[str, int]:
+    """Row counts per partition, reading only the two columns needed."""
+    arrow = (
+        _iceberg_table(pipeline, table)
+        .scan(selected_fields=("config_name", "split_name"))
+        .to_arrow()
+    )
+    counts: dict[str, int] = {}
+    for config, split in zip(
+        arrow.column("config_name").to_pylist(), arrow.column("split_name").to_pylist()
+    ):
+        key = f"{config}.{split}"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _iceberg_snapshot_metrics(pipeline: dlt.Pipeline, table: str = "lamda_samples") -> dict[str, int]:
+    """Rows and stored bytes straight from the Iceberg snapshot summary."""
+    snapshot = _iceberg_table(pipeline, table).current_snapshot()
+    if snapshot is None:
+        return {"rows": 0, "bytes": 0}
+    return {
+        "rows": int(snapshot.summary["total-records"]),
+        "bytes": int(snapshot.summary["total-files-size"]),
+    }
+
+
+def _drop_iceberg_dataset(pipeline: dlt.Pipeline) -> None:
+    catalog = pipeline.destination_client().get_open_table_catalog(TABLE_FORMAT)
+    namespace = pipeline.dataset_name
+    for identifier in catalog.list_tables(namespace):
+        catalog.drop_table(identifier)
+    catalog.drop_namespace(namespace)
+
+
+def benchmark_arrow_parquet_r2_iceberg(
+    context: BenchmarkContext,
+    options: dict[str, Any],
+) -> None:
+    """Stream Hub-hosted Parquet shards into Cloudflare R2 as Iceberg tables."""
+    limit_per_file = options.get("limit_per_file")
+    max_files = options.get("max_files")
+    batch_size = int(options.get("arrow_batch_size") or DEFAULT_BATCH_SIZE)
+    probe_remote_bytes = bool(options.get("probe_remote_bytes", True))
+
+    with context.stage("discover_source_files"):
+        files = parquet_manifest()
+        if max_files is not None:
+            files = files[: int(max_files)]
+
+    context.set_counter("source_files", len(files))
+
+    with context.stage("probe_source_bytes", enabled=probe_remote_bytes):
+        ingress_bytes = _probe_remote_bytes(files, enabled=probe_remote_bytes)
+
+    if ingress_bytes is not None:
+        context.set_counter("source_ingress_bytes", ingress_bytes)
+
+    pipeline = build_r2_iceberg_pipeline(
+        dataset_name=f"bench_{context.scenario}",
+        pipeline_name=f"bench_{context.scenario}",
+    )
+
+    with context.stage("dlt_stream_huggingface_parquet_to_r2_iceberg"):
+        pipeline.run(
+            [
+                lamda_files(files),
+                lamda_samples(
+                    files=files,
+                    batch_size=batch_size,
+                    limit_per_file=limit_per_file,
+                ),
+            ],
+            loader_file_format="parquet",
+            table_format=TABLE_FORMAT,
+        )
+
+    with context.stage("summarize_destination"):
+        counts = _iceberg_counts(pipeline)
+        snapshot = _iceberg_snapshot_metrics(pipeline)
+        manifest_rows = _iceberg_snapshot_metrics(pipeline, "lamda_files")["rows"]
+
+    context.set_counter("destination_dataset", pipeline.dataset_name)
+    context.set_counter("destination_rows_by_partition", counts)
+    context.set_counter("destination_rows", snapshot["rows"])
+    context.set_counter("destination_egress_bytes", snapshot["bytes"])
+    context.set_counter("transformed_rows", snapshot["rows"])
+    context.set_counter("manifest_rows", manifest_rows)
+
+    if options.get("drop_destination_dataset"):
+        with context.stage("drop_destination_dataset"):
+            _drop_iceberg_dataset(pipeline)
+
+
 SCENARIOS = {
     "arrow_parquet_snowflake": benchmark_arrow_parquet_snowflake,
+    "arrow_parquet_r2_iceberg": benchmark_arrow_parquet_r2_iceberg,
     "streaming_dlt_snowflake": benchmark_streaming_dlt_snowflake,
 }
 
