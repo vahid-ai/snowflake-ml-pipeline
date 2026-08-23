@@ -10,6 +10,7 @@ throughput and cost can be compared.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -62,11 +63,29 @@ def r2_s3_endpoint(account_id: str | None = None) -> str:
     )
 
 
+def r2_secret_access_key() -> str:
+    """The S3 secret key for R2.
+
+    Cloudflare documents that any API token with R2 permissions doubles as an
+    S3 key pair: the access key ID is the token's ID and the secret access key
+    is the SHA-256 hex digest of the token's value. When `R2_SECRET_ACCESS_KEY`
+    is not set, derive it from `R2_CATALOG_TOKEN`/`CLOUDFLARE_API_TOKEN` —
+    `R2_ACCESS_KEY_ID` must then be that same token's ID.
+    """
+    secret = os.getenv("R2_SECRET_ACCESS_KEY")
+    if secret:
+        return secret
+    token = os.getenv("R2_CATALOG_TOKEN") or os.getenv("CLOUDFLARE_API_TOKEN")
+    if token:
+        return hashlib.sha256(token.encode()).hexdigest()
+    return _require("R2_SECRET_ACCESS_KEY")
+
+
 def r2_credentials() -> AwsCredentials:
     """R2 speaks the S3 API, so dlt's AWS credentials carry the R2 token."""
     return AwsCredentials(
         aws_access_key_id=_require("R2_ACCESS_KEY_ID"),
-        aws_secret_access_key=_require("R2_SECRET_ACCESS_KEY"),
+        aws_secret_access_key=r2_secret_access_key(),
         endpoint_url=r2_s3_endpoint(),
         region_name=os.getenv("R2_REGION", "auto"),
     )
@@ -92,7 +111,7 @@ def r2_catalog_config() -> dict[str, Any]:
     # Hand pyiceberg the same R2 keys for reading and writing the data files, so
     # the pipeline does not depend on the catalog vending credentials.
     access_key = os.getenv("R2_ACCESS_KEY_ID")
-    secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
+    secret_key = r2_secret_access_key() if access_key else None
     if access_key and secret_key:
         config.update(
             {
