@@ -1,0 +1,41 @@
+{
+  "skill_name": "infisical",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "List the names of all the secrets in my Infisical vault. The machine identity credentials are already in the environment (INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET, INFISICAL_PROJECT_ID). Don't show me any secret values, just the names. Write your final answer to answer.md.",
+      "expected_output": "All 8 secret names in AI-Dev/dev including R2_SECRET_ACCESS_KEY, no values",
+      "files": [],
+      "assertions": [
+        "answer.md lists all 8 secret names: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, FIREBASE_CLI_TOKEN, R2_ACCESS_KEY_ID, R2_ACCOUNT_ID, R2_BUCKET, R2_CATALOG_TOKEN, R2_SECRET_ACCESS_KEY",
+        "R2_SECRET_ACCESS_KEY (the widest table row, historically dropped by whitespace parsing) is present in the listing",
+        "No secret values appear in answer.md (no 64-char hex strings or API-token-like strings, only names)",
+        "The stated count of secrets (if given) is 8, consistent with the listing"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "I think I added a secret called R2_SECRET_ACCESS_KEY to my Infisical project but I'm not sure it saved properly. Can you check whether it actually exists? Machine identity creds are in the env (INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET). Write your conclusion to answer.md.",
+      "expected_output": "Confirms R2_SECRET_ACCESS_KEY exists in the dev environment; does not claim it is missing",
+      "files": [],
+      "assertions": [
+        "answer.md concludes that R2_SECRET_ACCESS_KEY EXISTS (it does exist in the dev environment)",
+        "The conclusion does not claim the secret is missing or was saved incorrectly",
+        "No secret values appear in answer.md",
+        "The check is based on structured output (JSON/API or the bundled script), not naive whitespace parsing of the CLI table"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "How many secrets does my Infisical machine identity have access to in the dev environment, and what are they called? Credentials are in the environment already. I don't want to see any of the values. Save the answer to answer.md.",
+      "expected_output": "Reports 8 secrets with correct names, no values leaked",
+      "files": [],
+      "assertions": [
+        "answer.md states the count is 8 for the dev environment",
+        "All 8 names are listed and match the vault exactly",
+        "No secret values appear in answer.md",
+        "The listed names are consistent with the stated count (no silent row loss)"
+      ]
+    }
+  ]
+}
