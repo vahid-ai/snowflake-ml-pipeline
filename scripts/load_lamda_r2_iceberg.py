@@ -44,6 +44,7 @@ TABLE_FORMAT = "iceberg"
 # and load-worker parallelism. Both are overridable via the environment.
 MAX_ROWS_PER_LOAD_FILE = "200000"
 MAX_LOAD_WORKERS = "2"
+DEFAULT_FILES_PER_RUN = 4
 
 
 def apply_memory_limits() -> None:
@@ -182,6 +183,7 @@ def run_pipeline(
     limit_per_file: int | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     max_files: int | None = None,
+    files_per_run: int = DEFAULT_FILES_PER_RUN,
 ) -> None:
     files = parquet_manifest()
     if max_files is not None:
@@ -190,22 +192,41 @@ def run_pipeline(
         raise RuntimeError(f"No Parquet shards found for {DATASET_ID}")
 
     pipeline = build_pipeline(dataset_name=dataset_name)
-    load_info = pipeline.run(
-        [
-            lamda_files(files),
+
+    # dlt commits each table through a single followup job that materializes
+    # EVERY load file of that table as one in-memory Arrow table
+    # (pyarrow.dataset(...).to_table()), so the whole dataset in one run needs
+    # >14 GB for this ~2M x ~4.5k table and gets OOM-killed. Bound peak memory
+    # by splitting the shards across several runs: the first run replaces the
+    # tables, the rest append.
+    groups = [files[i : i + files_per_run] for i in range(0, len(files), files_per_run)]
+    loaded_rows = 0
+    for index, group in enumerate(groups):
+        resources = [
             lamda_samples(
-                files=files,
+                files=group,
                 batch_size=batch_size,
                 limit_per_file=limit_per_file,
-            ),
-        ],
-        loader_file_format="parquet",
-        table_format=TABLE_FORMAT,
-    )
-    print(load_info)
+            )
+        ]
+        if index == 0:
+            resources.insert(0, lamda_files(files))
+        load_info = pipeline.run(
+            resources,
+            loader_file_format="parquet",
+            table_format=TABLE_FORMAT,
+            write_disposition="replace" if index == 0 else "append",
+        )
+        print(load_info)
 
-    row_counts = pipeline.last_trace.last_normalize_info.row_counts
-    loaded_rows = row_counts.get("lamda_samples", 0)
+        row_counts = pipeline.last_trace.last_normalize_info.row_counts
+        group_rows = row_counts.get("lamda_samples", 0)
+        loaded_rows += group_rows
+        print(
+            f"[{index + 1}/{len(groups)}] {group_rows} rows from {len(group)} files "
+            f"({loaded_rows} rows total)"
+        )
+
     print(
         f"Streamed {loaded_rows} rows from {len(files)} Hugging Face Parquet files "
         f"into Iceberg namespace {dataset_name} on {r2_bucket_url()}"
@@ -242,6 +263,15 @@ def main() -> None:
         default=DEFAULT_BATCH_SIZE,
         help="Rows per Arrow batch streamed from Hugging Face.",
     )
+    parser.add_argument(
+        "--files-per-run",
+        type=int,
+        default=DEFAULT_FILES_PER_RUN,
+        help=(
+            "Parquet files ingested per pipeline run. Each run's rows are"
+            " materialized in memory at commit, so this bounds peak memory."
+        ),
+    )
     args = parser.parse_args()
 
     run_pipeline(
@@ -249,6 +279,7 @@ def main() -> None:
         limit_per_file=args.limit_per_file,
         batch_size=args.batch_size,
         max_files=args.max_files,
+        files_per_run=args.files_per_run,
     )
 
 
