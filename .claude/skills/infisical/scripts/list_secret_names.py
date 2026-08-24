@@ -65,6 +65,12 @@ def list_projects(domain: str, token: str) -> list[dict]:
 
 
 def list_secret_names(domain: str, token: str, project_id: str, env: str) -> list[str]:
+    """Return one entry per secret as `<path>/<key>`.
+
+    Keys are scoped by folder path in Infisical, so two folders can hold the
+    same `secretKey`; deduplicating by key alone would merge distinct secrets
+    and under-count. Keep the (path, key) pair instead.
+    """
     query = urllib.parse.urlencode(
         {
             "workspaceId": project_id,
@@ -74,9 +80,14 @@ def list_secret_names(domain: str, token: str, project_id: str, env: str) -> lis
         }
     )
     result = _request(f"{domain}/api/v3/secrets/raw?{query}", token)
-    names = {s["secretKey"] for s in result.get("secrets", [])}
+
+    def qualified(secret: dict) -> str:
+        path = (secret.get("secretPath") or "/").rstrip("/")
+        return f"{path}/{secret['secretKey']}".lstrip("/") or secret["secretKey"]
+
+    names = {qualified(s) for s in result.get("secrets", [])}
     for imported in result.get("imports", []):
-        names.update(s["secretKey"] for s in imported.get("secrets", []))
+        names.update(qualified(s) for s in imported.get("secrets", []))
     return sorted(names)
 
 
@@ -101,6 +112,14 @@ def main() -> None:
 
     if not projects:
         sys.exit("No projects visible to this identity.")
+
+    if args.env:
+        all_slugs = {e["slug"] for p in projects for e in p.get("environments", [])}
+        if args.env not in all_slugs:
+            sys.exit(
+                f"Environment '{args.env}' not found in any visible project. "
+                f"Available: {sorted(all_slugs)}"
+            )
 
     for project in projects:
         env_slugs = [e["slug"] for e in project.get("environments", [])]

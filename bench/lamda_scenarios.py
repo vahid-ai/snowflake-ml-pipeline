@@ -288,11 +288,42 @@ def _iceberg_snapshot_metrics(pipeline: dlt.Pipeline, table: str = "lamda_sample
 
 
 def _drop_iceberg_dataset(pipeline: dlt.Pipeline) -> None:
+    """Drop the benchmark namespace AND its files.
+
+    `drop_table` only removes the catalog entry; without a purge the data and
+    metadata files would accumulate in R2 across benchmark runs.
+    """
+    import os
+    from urllib.parse import urlparse
+
+    import boto3
+    from scripts.load_lamda_r2_iceberg import r2_bucket_url, r2_s3_endpoint, r2_secret_access_key
+
     catalog = pipeline.destination_client().get_open_table_catalog(TABLE_FORMAT)
     namespace = pipeline.dataset_name
     for identifier in catalog.list_tables(namespace):
-        catalog.drop_table(identifier)
+        try:
+            catalog.purge_table(identifier)
+        except Exception:
+            catalog.drop_table(identifier)
     catalog.drop_namespace(namespace)
+
+    # Purge support varies by catalog; delete any files left under the
+    # namespace prefix so repeated benchmark runs don't accumulate storage.
+    parsed = urlparse(r2_bucket_url())
+    bucket, base_prefix = parsed.netloc, parsed.path.strip("/")
+    prefix = f"{base_prefix}/{namespace}/"
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=r2_s3_endpoint(),
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=r2_secret_access_key(),
+        region_name=os.getenv("R2_REGION", "auto"),
+    )
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
+        keys = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+        if keys:
+            s3.delete_objects(Bucket=bucket, Delete={"Objects": keys})
 
 
 def benchmark_arrow_parquet_r2_iceberg(
