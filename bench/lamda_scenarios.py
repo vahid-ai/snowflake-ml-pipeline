@@ -17,6 +17,7 @@ from scripts.load_lamda import (
     parquet_manifest,
 )
 from scripts.load_lamda_r2_iceberg import (
+    DEFAULT_FILES_PER_RUN,
     TABLE_FORMAT,
     build_pipeline as build_r2_iceberg_pipeline,
 )
@@ -322,19 +323,28 @@ def benchmark_arrow_parquet_r2_iceberg(
         pipeline_name=f"bench_{context.scenario}",
     )
 
-    with context.stage("dlt_stream_huggingface_parquet_to_r2_iceberg"):
-        pipeline.run(
-            [
-                lamda_files(files),
+    # Grouped runs, mirroring run_pipeline: the Iceberg commit materializes
+    # every load file of a table in memory, so rows per run must stay bounded.
+    files_per_run = int(options.get("files_per_run") or DEFAULT_FILES_PER_RUN)
+    groups = [files[i : i + files_per_run] for i in range(0, len(files), files_per_run)]
+
+    with context.stage("dlt_stream_huggingface_parquet_to_r2_iceberg", groups=len(groups)):
+        for index, group in enumerate(groups):
+            resources = [
                 lamda_samples(
-                    files=files,
+                    files=group,
                     batch_size=batch_size,
                     limit_per_file=limit_per_file,
-                ),
-            ],
-            loader_file_format="parquet",
-            table_format=TABLE_FORMAT,
-        )
+                )
+            ]
+            if index == 0:
+                resources.insert(0, lamda_files(files))
+            pipeline.run(
+                resources,
+                loader_file_format="parquet",
+                table_format=TABLE_FORMAT,
+                write_disposition="replace" if index == 0 else "append",
+            )
 
     with context.stage("summarize_destination"):
         counts = _iceberg_counts(pipeline)

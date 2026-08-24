@@ -94,6 +94,37 @@ authoritative source for row/byte counts — no full scan needed. On wide
 tables (thousands of columns), never `to_arrow()` the whole schema just to
 count things; select the two or three columns you need.
 
+## Client-side writes: bound rows per run, not per file
+
+Iceberg writes through dlt happen **client-side** — there is no warehouse
+doing the heavy lifting the way Snowflake's `COPY INTO` does. Wide tables can
+OOM the writer, and the obvious mitigations do not work:
+
+- Chunking load files is **not enough**: dlt commits each table through a
+  single followup job that materializes EVERY load file of the table as one
+  in-memory Arrow table (`pyarrow.dataset(file_paths).to_table()`). Ten small
+  files cost the same peak memory as one big one.
+- If you do want smaller load files anyway, the buffered writer reads its
+  config from the plain `data_writer` section: `DATA_WRITER__FILE_MAX_ITEMS`
+  works; `EXTRACT__DATA_WRITER__FILE_MAX_ITEMS` and
+  `NORMALIZE__DATA_WRITER__FILE_MAX_ITEMS` silently do nothing for Arrow
+  resources (they are written to Parquet at extract, and normalize passes the
+  files through untouched).
+
+The lever that actually bounds memory is **rows per pipeline run**: split the
+source into groups and run the pipeline once per group — first run with
+`write_disposition="replace"`, subsequent runs `"append"`. Each run's commit
+then materializes only that group. Budget roughly `rows x columns x 3` bytes
+of peak memory per run for narrow-typed columns (copies for compatibility
+conversion and write buffers), e.g. ~500k rows x ~4.5k int8 columns ≈ 2-4 GB.
+
+A useful side effect: the first run's `replace` truncates the table folder,
+which also cleans up staged files orphaned by earlier failed runs.
+
+The symptom when this is wrong: extract and normalize succeed, data files
+upload, and the process is OOM-killed during the load step at whatever the
+container's memory limit is — check `dmesg` for the memory-cgroup kill.
+
 ## Operational notes
 
 - Enabling the catalog on a bucket is one-time (`wrangler r2 bucket catalog
