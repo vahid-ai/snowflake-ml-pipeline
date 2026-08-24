@@ -53,7 +53,13 @@ def _require(name: str) -> str:
 
 
 def r2_bucket_url(bucket: str | None = None) -> str:
-    return f"s3://{bucket or _require('R2_BUCKET')}"
+    """Base URL for table storage inside the bucket.
+
+    R2 Data Catalog only accepts table locations under its storage profile,
+    the reserved `__r2_data_catalog/` prefix, so table data lives there.
+    """
+    prefix = os.getenv("R2_CATALOG_PREFIX", "__r2_data_catalog").strip("/")
+    return f"s3://{bucket or _require('R2_BUCKET')}/{prefix}"
 
 
 def r2_s3_endpoint(account_id: str | None = None) -> str:
