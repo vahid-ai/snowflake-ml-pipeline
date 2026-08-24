@@ -48,10 +48,10 @@ MAX_LOAD_WORKERS = "2"
 
 def apply_memory_limits() -> None:
     # Arrow resources are written to Parquet at EXTRACT time and normalize
-    # passes those files through as-is, so the extract writer is the one that
-    # must rotate files; the normalize setting is kept for non-arrow resources.
-    os.environ.setdefault("EXTRACT__DATA_WRITER__FILE_MAX_ITEMS", MAX_ROWS_PER_LOAD_FILE)
-    os.environ.setdefault("NORMALIZE__DATA_WRITER__FILE_MAX_ITEMS", MAX_ROWS_PER_LOAD_FILE)
+    # passes those files through as-is. The buffered writer resolves its config
+    # from the plain `data_writer` section (no EXTRACT__/NORMALIZE__ prefix) —
+    # verified empirically: the prefixed variants leave one monolithic file.
+    os.environ.setdefault("DATA_WRITER__FILE_MAX_ITEMS", MAX_ROWS_PER_LOAD_FILE)
     os.environ.setdefault("LOAD__WORKERS", MAX_LOAD_WORKERS)
 
 
