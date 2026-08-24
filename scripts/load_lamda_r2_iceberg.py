@@ -37,6 +37,19 @@ DEFAULT_DATASET_NAME = "raw_lamda"
 PIPELINE_NAME = "lamda_huggingface_r2_iceberg"
 TABLE_FORMAT = "iceberg"
 
+# Unlike Snowflake, where COPY INTO does the heavy lifting server-side, the
+# Iceberg path writes client-side: pyiceberg materializes each load file as a
+# single in-memory Arrow table. One monolithic file for this dataset (~2M rows
+# x ~4.5k columns) needs >14 GB and gets OOM-killed, so cap rows per load file
+# and load-worker parallelism. Both are overridable via the environment.
+MAX_ROWS_PER_LOAD_FILE = "200000"
+MAX_LOAD_WORKERS = "2"
+
+
+def apply_memory_limits() -> None:
+    os.environ.setdefault("NORMALIZE__DATA_WRITER__FILE_MAX_ITEMS", MAX_ROWS_PER_LOAD_FILE)
+    os.environ.setdefault("LOAD__WORKERS", MAX_LOAD_WORKERS)
+
 
 class R2ConfigurationError(RuntimeError):
     """Raised when the R2 environment is incompletely configured."""
@@ -151,6 +164,7 @@ def build_pipeline(
     pipeline_name: str = PIPELINE_NAME,
     catalog_name: str = "r2_data_catalog",
 ) -> dlt.Pipeline:
+    apply_memory_limits()
     apply_catalog_config(catalog_name)
     return dlt.pipeline(
         pipeline_name=pipeline_name,
