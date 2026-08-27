@@ -1,0 +1,22 @@
+source:
+  type: iceberg
+  config:
+    env: PROD
+    platform_instance: r2_lamda
+    # Properties under the catalog name are passed to pyiceberg's load_catalog,
+    # so this mirrors scripts/load_lamda_r2_iceberg.py exactly.
+    catalog:
+      r2_data_catalog:
+        type: rest
+        uri: "${R2_CATALOG_URI}"
+        warehouse: "${R2_CATALOG_WAREHOUSE}"
+        token: "${R2_CATALOG_TOKEN}"
+        s3.endpoint: "${R2_S3_ENDPOINT}"
+        s3.access-key-id: "${R2_ACCESS_KEY_ID}"
+        s3.secret-access-key: "${R2_SECRET_ACCESS_KEY}"
+        s3.region: "${R2_REGION}"
+
+sink:
+  type: datahub-rest
+  config:
+    server: "${DATAHUB_GMS_URL}"
