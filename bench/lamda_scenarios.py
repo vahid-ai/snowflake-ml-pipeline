@@ -16,6 +16,11 @@ from scripts.load_lamda import (
     lamda_samples,
     parquet_manifest,
 )
+from scripts.load_lamda_r2_iceberg import (
+    DEFAULT_FILES_PER_RUN,
+    TABLE_FORMAT,
+    build_pipeline as build_r2_iceberg_pipeline,
+)
 
 
 def _query(pipeline: dlt.Pipeline, sql: str) -> list[tuple]:
@@ -250,8 +255,148 @@ def benchmark_streaming_dlt_snowflake(
     _finalize(context, pipeline, options)
 
 
+def _iceberg_table(pipeline: dlt.Pipeline, table: str):
+    catalog = pipeline.destination_client().get_open_table_catalog(TABLE_FORMAT)
+    return catalog.load_table(f"{pipeline.dataset_name}.{table}")
+
+
+def _iceberg_counts(pipeline: dlt.Pipeline, table: str = "lamda_samples") -> dict[str, int]:
+    """Row counts per partition, reading only the two columns needed."""
+    arrow = (
+        _iceberg_table(pipeline, table)
+        .scan(selected_fields=("config_name", "split_name"))
+        .to_arrow()
+    )
+    counts: dict[str, int] = {}
+    for config, split in zip(
+        arrow.column("config_name").to_pylist(), arrow.column("split_name").to_pylist()
+    ):
+        key = f"{config}.{split}"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _iceberg_snapshot_metrics(pipeline: dlt.Pipeline, table: str = "lamda_samples") -> dict[str, int]:
+    """Rows and stored bytes straight from the Iceberg snapshot summary."""
+    snapshot = _iceberg_table(pipeline, table).current_snapshot()
+    if snapshot is None:
+        return {"rows": 0, "bytes": 0}
+    return {
+        "rows": int(snapshot.summary["total-records"]),
+        "bytes": int(snapshot.summary["total-files-size"]),
+    }
+
+
+def _drop_iceberg_dataset(pipeline: dlt.Pipeline) -> None:
+    """Drop the benchmark namespace AND its files.
+
+    `drop_table` only removes the catalog entry; without a purge the data and
+    metadata files would accumulate in R2 across benchmark runs.
+    """
+    import os
+    from urllib.parse import urlparse
+
+    import boto3
+    from scripts.load_lamda_r2_iceberg import r2_bucket_url, r2_s3_endpoint, r2_secret_access_key
+
+    catalog = pipeline.destination_client().get_open_table_catalog(TABLE_FORMAT)
+    namespace = pipeline.dataset_name
+    for identifier in catalog.list_tables(namespace):
+        try:
+            catalog.purge_table(identifier)
+        except Exception:
+            catalog.drop_table(identifier)
+    catalog.drop_namespace(namespace)
+
+    # Purge support varies by catalog; delete any files left under the
+    # namespace prefix so repeated benchmark runs don't accumulate storage.
+    parsed = urlparse(r2_bucket_url())
+    bucket, base_prefix = parsed.netloc, parsed.path.strip("/")
+    prefix = f"{base_prefix}/{namespace}/"
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=r2_s3_endpoint(),
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=r2_secret_access_key(),
+        region_name=os.getenv("R2_REGION", "auto"),
+    )
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
+        keys = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+        if keys:
+            s3.delete_objects(Bucket=bucket, Delete={"Objects": keys})
+
+
+def benchmark_arrow_parquet_r2_iceberg(
+    context: BenchmarkContext,
+    options: dict[str, Any],
+) -> None:
+    """Stream Hub-hosted Parquet shards into Cloudflare R2 as Iceberg tables."""
+    limit_per_file = options.get("limit_per_file")
+    max_files = options.get("max_files")
+    batch_size = int(options.get("arrow_batch_size") or DEFAULT_BATCH_SIZE)
+    probe_remote_bytes = bool(options.get("probe_remote_bytes", True))
+
+    with context.stage("discover_source_files"):
+        files = parquet_manifest()
+        if max_files is not None:
+            files = files[: int(max_files)]
+
+    context.set_counter("source_files", len(files))
+
+    with context.stage("probe_source_bytes", enabled=probe_remote_bytes):
+        ingress_bytes = _probe_remote_bytes(files, enabled=probe_remote_bytes)
+
+    if ingress_bytes is not None:
+        context.set_counter("source_ingress_bytes", ingress_bytes)
+
+    pipeline = build_r2_iceberg_pipeline(
+        dataset_name=f"bench_{context.scenario}",
+        pipeline_name=f"bench_{context.scenario}",
+    )
+
+    # Grouped runs, mirroring run_pipeline: the Iceberg commit materializes
+    # every load file of a table in memory, so rows per run must stay bounded.
+    files_per_run = int(options.get("files_per_run") or DEFAULT_FILES_PER_RUN)
+    groups = [files[i : i + files_per_run] for i in range(0, len(files), files_per_run)]
+
+    with context.stage("dlt_stream_huggingface_parquet_to_r2_iceberg", groups=len(groups)):
+        for index, group in enumerate(groups):
+            resources = [
+                lamda_samples(
+                    files=group,
+                    batch_size=batch_size,
+                    limit_per_file=limit_per_file,
+                )
+            ]
+            if index == 0:
+                resources.insert(0, lamda_files(files))
+            pipeline.run(
+                resources,
+                loader_file_format="parquet",
+                table_format=TABLE_FORMAT,
+                write_disposition="replace" if index == 0 else "append",
+            )
+
+    with context.stage("summarize_destination"):
+        counts = _iceberg_counts(pipeline)
+        snapshot = _iceberg_snapshot_metrics(pipeline)
+        manifest_rows = _iceberg_snapshot_metrics(pipeline, "lamda_files")["rows"]
+
+    context.set_counter("destination_dataset", pipeline.dataset_name)
+    context.set_counter("destination_rows_by_partition", counts)
+    context.set_counter("destination_rows", snapshot["rows"])
+    context.set_counter("destination_egress_bytes", snapshot["bytes"])
+    context.set_counter("transformed_rows", snapshot["rows"])
+    context.set_counter("manifest_rows", manifest_rows)
+
+    if options.get("drop_destination_dataset"):
+        with context.stage("drop_destination_dataset"):
+            _drop_iceberg_dataset(pipeline)
+
+
 SCENARIOS = {
     "arrow_parquet_snowflake": benchmark_arrow_parquet_snowflake,
+    "arrow_parquet_r2_iceberg": benchmark_arrow_parquet_r2_iceberg,
     "streaming_dlt_snowflake": benchmark_streaming_dlt_snowflake,
 }
 

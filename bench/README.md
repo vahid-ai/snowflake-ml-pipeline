@@ -11,12 +11,29 @@ connections.
 
 - `arrow_parquet_snowflake`: Hub-hosted Parquet shards are read over fsspec in
   Arrow batches and loaded into Snowflake by dlt as Parquet.
+- `arrow_parquet_r2_iceberg`: the same Arrow batches, written to Cloudflare R2 as
+  Iceberg tables registered in R2 Data Catalog. This is the head-to-head
+  comparison against `arrow_parquet_snowflake` — identical source path and
+  batches, different destination.
 - `streaming_dlt_snowflake`: Hugging Face `datasets` streaming rows are batched
   through dlt into Snowflake.
 
-Each scenario loads into its own `bench_<scenario>` schema so the production
-`raw_lamda` schema is untouched. Pass `--drop-destination-dataset` to drop those
-benchmark schemas once metrics are collected.
+Each scenario loads into its own `bench_<scenario>` schema or Iceberg namespace
+so the production `raw_lamda` dataset is untouched. Pass
+`--drop-destination-dataset` to drop those benchmark schemas and namespaces once
+metrics are collected.
+
+Destination metrics come from each system's own accounting: Snowflake's
+`information_schema.tables` for the warehouse scenarios, and the Iceberg
+snapshot summary (`total-records`, `total-files-size`) for R2. Row counts per
+partition on R2 read only the two partition columns, so the wide feature columns
+are not scanned.
+
+Running only the two comparable scenarios:
+
+```powershell
+uv run python -m bench.run --scenario arrow_parquet_snowflake --scenario arrow_parquet_r2_iceberg
+```
 
 ## Metrics
 
