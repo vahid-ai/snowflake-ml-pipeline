@@ -39,6 +39,27 @@ The run registers each Iceberg table as a DataHub dataset under platform
 `iceberg`, instance `r2_lamda` — e.g. `raw_lamda.lamda_samples` with its full
 column schema and table properties. Re-running refreshes them.
 
+## Troubleshooting the quickstart in constrained containers
+
+Two host-level issues surfaced running this in a sandboxed container, both
+fatal to the `system-update` job (it dies at `BuildIndicesIncremental`):
+
+- **`vm.max_map_count` too low** — OpenSearch wants 262144:
+  `sysctl -w vm.max_map_count=262144`.
+- **OpenSearch blocks index creation on disk pressure**
+  (`index_create_block_exception … cluster create-index blocked`). Containers
+  with a small disk allowance on a large filesystem trip the ~90% high
+  watermark even with plenty of space free. Disable the threshold check:
+
+  ```bash
+  docker exec datahub-opensearch-1 curl -s -X PUT "localhost:9200/_cluster/settings" \
+    -H 'Content-Type: application/json' \
+    -d '{"persistent": {"cluster.routing.allocation.disk.threshold_enabled": false, "cluster.blocks.create_index": null}}'
+  ```
+
+  The compose stack keeps restarting the update job, so it recovers on the
+  next attempt once the block is cleared.
+
 ## Operational notes
 
 - The quickstart stack is stateful across restarts (Docker volumes). Stop it
