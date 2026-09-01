@@ -102,6 +102,35 @@ Setup, in short:
 The credentials and their permissions are documented in
 [docs/authentication.md](docs/authentication.md#cloudflare-r2-and-r2-data-catalog).
 
+## LAMDA feature descriptions
+
+LAMDA's `feat_*` columns are Drebin-style binary features whose meaning lives
+in the Hub's `feature_mapping.csv` files. Two scripts turn that mapping into a
+queryable data dictionary:
+
+```powershell
+uv run python scripts/build_lamda_feature_descriptions.py
+uv run python scripts/load_lamda_feature_descriptions.py
+```
+
+The first classifies every static-analysis token into its Drebin feature set
+(hardware components, requested/used permissions, app components, intent
+filters, restricted/suspicious API calls, network addresses) and generates,
+from a curated Android-malware knowledge base, a description of what the token
+is plus how it serves as a malware-detection signal. The result is committed at
+[data/lamda_feature_descriptions.json](data/lamda_feature_descriptions.json).
+
+The second loads that JSON with dlt into the same R2 Data Catalog namespace as
+the raw data, adding three Iceberg tables that join against `lamda_samples`:
+
+- `lamda_feature_descriptions` — one row per token, with the config-specific
+  `feat_*` ids (`feature_id_baseline`, `feature_id_var_thresh_0_01`; ids are
+  **not** interchangeable between configs) and the two description texts
+- `lamda_feature_categories` — the ten Drebin feature sets with category-level
+  detection rationale
+- `lamda_column_glossary` — the non-feature metadata and provenance columns of
+  `lamda_samples`
+
 ## Run dbt
 
 ```powershell

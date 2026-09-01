@@ -12,8 +12,9 @@ wheels/
 # Local credentials
 .env
 
-# Local scratch data
-data/
+# Local scratch data (except the committed LAMDA feature dictionary)
+data/*
+!data/lamda_feature_descriptions.json
 
 # dlt/dbt runtime state
 .dlt/
