@@ -14,3 +14,10 @@ dependencies = [
     "pyarrow>=17.0.0",
     "pyinstrument>=5.1.2",
 ]
+
+[project.optional-dependencies]
+# Only scripts/duckdb_ui.py needs DuckDB: it attaches R2 Data Catalog as an
+# Iceberg REST catalog and opens the DuckDB UI to browse the tables. Kept out
+# of the main dependencies so the ingestion pipeline does not carry it.
+#   uv sync --extra duckdb
+duckdb = ["duckdb>=1.2.2"]
