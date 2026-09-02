@@ -60,6 +60,46 @@ fatal to the `system-update` job (it dies at `BuildIndicesIncremental`):
   The compose stack keeps restarting the update job, so it recovers on the
   next attempt once the block is cleared.
 
+## Troubleshooting the quickstart on Windows
+
+Neither issue below affects the stack itself — `system-update` completes
+cleanly on a normal Windows host, so the two container fixes above are not
+needed there. Both are host-level problems that make a working setup look
+broken.
+
+- **The quickstart ends in a traceback even when it worked.** The last thing
+  `datahub docker quickstart` does is print `✔ DataHub is now running`, and a
+  `cp1252` console cannot encode `✔`:
+
+  ```text
+  UnicodeEncodeError: 'charmap' codec can't encode character '\u2714' in position 0: character maps to <undefined>
+  ```
+
+  The traceback fires *after* the stack is up and the command still exits 0,
+  so it is safe to ignore; `PYTHONIOENCODING=utf-8` silences it. Confirm the
+  real state with `docker ps` — six containers up, plus `system-update`
+  exited 0.
+
+- **Docker Desktop crash-looping on stale sockets.** If the backend dies at
+  startup with `initializing Inference manager` or `initializing Secrets
+  Engine` and `The file cannot be accessed by the system`, orphaned AF_UNIX
+  socket files from an earlier crash are blocking it. Windows refuses to
+  delete them (`del`, `Remove-Item`, and `File.Delete` all fail), but
+  renaming their parent directories works. With Docker fully stopped, move
+  both aside:
+
+  ```powershell
+  Get-Process "Docker Desktop","com.docker.backend" -ErrorAction SilentlyContinue |
+    Stop-Process -Force
+  Rename-Item "$env:LOCALAPPDATA\Docker\run" run.stale -ErrorAction SilentlyContinue
+  Rename-Item "$env:LOCALAPPDATA\docker-secrets-engine" `
+    docker-secrets-engine.stale -ErrorAction SilentlyContinue
+  ```
+
+  Docker recreates both on the next start. Clear them in the same pass —
+  fixing one at a time just moves the crash to the other, because each
+  failed start leaves behind a fresh socket the next one cannot remove.
+
 ## Operational notes
 
 - The quickstart stack is stateful across restarts (Docker volumes). Stop it
