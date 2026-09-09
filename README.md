@@ -2,18 +2,19 @@
 
 dlt and dbt pipelines that ingest the Hugging Face dataset `IQSeC-Lab/LAMDA`
 **directly into a warehouse or lakehouse**. The Parquet shards are streamed from
-the Hub in Arrow batches and handed to dlt, so the dataset is never downloaded to
-a local database or file.
+the Hub in Arrow batches and handed to dlt. A separate downloader copies the
+existing R2 Iceberg tables into a local Iceberg warehouse for offline work.
 
-Two destinations are maintained side by side so they can be benchmarked against
-each other:
+Two ingestion destinations can be benchmarked against each other, with a third
+pipeline for downloading the R2 output:
 
 | Pipeline | Destination | Script |
 | --- | --- | --- |
 | Snowflake | `raw_lamda` schema in a Snowflake database | `scripts/load_lamda.py` |
 | R2 + Iceberg | Iceberg tables in a Cloudflare R2 bucket, registered in R2 Data Catalog | `scripts/load_lamda_r2_iceberg.py` |
+| R2 → local Iceberg | Local Iceberg warehouse with a persistent SQLite catalog | `scripts/load_lamda_local_iceberg.py` |
 
-Both read the same Hugging Face source and produce the same two tables with the
+The two ingestion pipelines read the same Hugging Face source and produce the same two tables with the
 same provenance columns, so their metrics are directly comparable. dbt currently
 models the Snowflake output.
 
@@ -101,6 +102,20 @@ Setup, in short:
 
 The credentials and their permissions are documented in
 [docs/authentication.md](docs/authentication.md#cloudflare-r2-and-r2-data-catalog).
+
+## Download R2 tables into local Iceberg
+
+Inject the R2 credentials with the Infisical CLI, then run:
+
+```powershell
+infisical run --projectId=0cfed731-cdf4-46b8-b831-2d74be495575 --env=dev -- uv run python scripts/load_lamda_local_iceberg.py
+```
+
+This refreshes all `lamda_*` tables in a local warehouse under
+`data/lamda_iceberg/`, with a persistent `catalog.sqlite` for offline access.
+For a small test, add `--local-root data/lamda_iceberg_smoke --limit-per-table 100`.
+See [docs/local_iceberg.md](docs/local_iceberg.md) for table selection, offline
+queries, memory controls and refresh/recovery behavior.
 
 ## LAMDA feature descriptions
 
