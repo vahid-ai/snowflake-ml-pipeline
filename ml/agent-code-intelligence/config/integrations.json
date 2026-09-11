@@ -1,0 +1,110 @@
+{
+  "serena": {
+    "kind": "stdio",
+    "command": "serena",
+    "args": [
+      "start-mcp-server",
+      "--project-from-cwd"
+    ],
+    "host_args": {
+      "claude-code": [
+        "--context=claude-code"
+      ],
+      "codex": [
+        "--context=codex"
+      ]
+    },
+    "role": "symbol-navigation",
+    "notes": "Portable symbol/code-intelligence MCP. Install with `uv tool install -p 3.13 serena-agent`, then run `serena init`."
+  },
+  "context7": {
+    "kind": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@upstash/context7-mcp@latest"
+    ],
+    "role": "documentation",
+    "notes": "Version-aware library documentation. API key may improve rate limits."
+  },
+  "deepwiki": {
+    "kind": "http",
+    "url": "https://mcp.deepwiki.com/mcp",
+    "role": "public-repo-knowledge",
+    "notes": "Remote service for public repositories; do not send private code without authorization."
+  },
+  "repomix": {
+    "kind": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "repomix",
+      "--mcp"
+    ],
+    "role": "repo-packing",
+    "notes": "Pack local/remote repositories into bounded AI-friendly context."
+  },
+  "grepai": {
+    "kind": "stdio",
+    "command": "grepai",
+    "args": [
+      "mcp-serve"
+    ],
+    "role": "semantic-search",
+    "notes": "Requires initialized/built grepai index and embedding provider."
+  },
+  "codegraph": {
+    "kind": "stdio",
+    "command": "codegraph-server",
+    "args": [
+      "--mcp",
+      "--profile=core"
+    ],
+    "role": "code-graph",
+    "notes": "Install CodeGraph engine first. Prefer core/graph profiles to reduce tool-schema cost."
+  },
+  "code-review-graph": {
+    "kind": "managed-by-upstream",
+    "role": "review-graph",
+    "notes": "Use `code-review-graph install --platform claude-code` or `--platform codex`; upstream installer writes host-specific MCP/hooks safely."
+  },
+  "mem0": {
+    "kind": "stdio",
+    "command": "uvx",
+    "args": [
+      "mem0-mcp-server"
+    ],
+    "env": {
+      "MEM0_API_KEY": "${MEM0_API_KEY}",
+      "MEM0_DEFAULT_USER_ID": "${MEM0_DEFAULT_USER_ID}"
+    },
+    "role": "factual-memory",
+    "notes": "Hosted Mem0 MCP example; keep secrets in environment variables."
+  },
+  "graphiti": {
+    "kind": "http",
+    "url": "http://localhost:8000/mcp/",
+    "role": "temporal-graph-memory",
+    "notes": "Run Graphiti MCP separately (commonly Docker + graph backend) before enabling."
+  },
+  "cognee": {
+    "kind": "external-setup",
+    "role": "knowledge-memory",
+    "notes": "Install/configure Cognee separately; its UI can launch an MCP server in Docker. Prefer its official integration when available."
+  },
+  "letta": {
+    "kind": "agent-harness",
+    "role": "stateful-agent",
+    "notes": "Letta is an agent harness/SDK, not a drop-in memory MCP for this plugin. Integrate only when intentionally running a persistent Letta agent."
+  },
+  "jetbrains": {
+    "kind": "ide-managed",
+    "role": "symbol-navigation",
+    "notes": "Enable/configure the built-in JetBrains MCP server from the IDE; do not spawn it from this plugin."
+  },
+  "zoekt": {
+    "kind": "cli",
+    "role": "massive-indexed-search",
+    "notes": "Use zoekt CLI/index services; no bundled MCP is assumed."
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "agent-code-intelligence",
+  "version": "1.1.0",
+  "description": "Token-efficient codebase search, semantic navigation, graph analysis, documentation retrieval, and verified agent memory routing for Claude Code and Codex.",
+  "license": "MIT",
+  "keywords": [
+    "code-search",
+    "lsp",
+    "mcp",
+    "semantic-search",
+    "code-graph",
+    "memory",
+    "token-efficiency",
+    "claude-code",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Agent Code Intelligence",
+    "shortDescription": "Route coding agents to the cheapest useful code-intelligence tool.",
+    "longDescription": "A retrieval and memory routing plugin for Claude Code and Codex. It prefers exact and structural local search, escalates to LSP, docs, semantic search, and code graphs only when needed, and uses verified memory promotion to avoid learning incorrect fixes.",
+    "developerName": "Local / portable plugin",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read"
+    ]
+  }
+}

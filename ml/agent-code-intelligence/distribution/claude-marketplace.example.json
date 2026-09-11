@@ -1,0 +1,14 @@
+{
+  "name": "agent-code-intelligence-local",
+  "owner": {
+    "name": "Local"
+  },
+  "plugins": [
+    {
+      "name": "agent-code-intelligence",
+      "source": "./agent-code-intelligence-1.1.0",
+      "description": "Token-efficient codebase search and verified memory routing.",
+      "version": "1.1.0"
+    }
+  ]
+}
