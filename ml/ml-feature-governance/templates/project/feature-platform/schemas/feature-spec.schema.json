@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ml-feature-governance:feature-spec:1.0",
+  "title": "Canonical ML Feature Specification",
+  "type": "object",
+  "required": [
+    "spec_version",
+    "features"
+  ],
+  "properties": {
+    "spec_version": {
+      "const": "1.0"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "semantic_type",
+          "output"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "semantic_type": {
+            "enum": [
+              "continuous",
+              "numerical",
+              "categorical",
+              "binary",
+              "embedding",
+              "vector",
+              "timestamp",
+              "text",
+              "identifier"
+            ]
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]*@[1-9][0-9]*$"
+            }
+          },
+          "output": {
+            "type": "object",
+            "required": [
+              "type",
+              "nullable"
+            ],
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "nullable": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true
+          },
+          "transform": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "expression",
+                  "builtin",
+                  "fitted",
+                  "model",
+                  "window_aggregate",
+                  "plugin"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": true
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "storage": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string"
+              },
+              "table": {
+                "type": "string",
+                "minLength": 1
+              },
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "iceberg_field_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "doc": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "format"
+                  ],
+                  "properties": {
+                    "format": {
+                      "const": "iceberg"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "table",
+                    "iceberg_field_id"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

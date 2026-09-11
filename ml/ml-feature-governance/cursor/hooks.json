@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python ./scripts/session_context.py"
+      }
+    ],
+    "preToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "command": "python ./scripts/guard_write.py"
+      }
+    ],
+    "postToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "command": "python ./scripts/validate_after_write.py"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "python ./scripts/validate_after_write.py"
+      }
+    ],
+    "afterTabFileEdit": [
+      {
+        "command": "python ./scripts/validate_after_write.py"
+      }
+    ]
+  }
+}

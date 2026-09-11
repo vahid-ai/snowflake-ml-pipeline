@@ -1,0 +1,20 @@
+{
+  "name": "ml-feature-governance",
+  "version": "0.5.0",
+  "description": "Enforces a typed, versioned, engine-neutral ML feature-contract architecture across Cursor, Codex, and Claude Code.",
+  "author": {
+    "name": "ML Feature Governance Contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "machine-learning",
+    "feature-engineering",
+    "data-engineering",
+    "governance",
+    "data-contracts"
+  ],
+  "skills": "./skills/",
+  "rules": "./rules/",
+  "agents": "./agents/",
+  "hooks": "./cursor/hooks.json"
+}

@@ -1,0 +1,18 @@
+---
+description: Enforce this repository's canonical ML feature-platform contract.
+alwaysApply: true
+---
+
+Read and follow the managed ML Feature Governance section in `AGENTS.md` whenever work touches feature engineering,
+training datasets, model inputs, feature stores, transformations, backend adapters, or ML data pipelines.
+
+After canonical edits, run:
+
+```bash
+python .feature-platform/tools/featurectl.py validate --project-dir .
+```
+
+For Iceberg work, read `feature-platform/docs/iceberg-metadata.md`: canonical types/nullability
+are required contracts, actual schemas live in Iceberg, field IDs are table-scoped, and
+resolved datasets pin snapshots independently of feature versions. Keep docs as prose
+and normalization in separate fitted-transform nodes.

@@ -1,0 +1,22 @@
+spec_version: "1.0"
+experiments:
+  - id: anomaly.feature_ablation
+    version: 1
+    base_feature_set: device.anomaly_baseline@1
+    variants:
+      - name: baseline
+      - name: no_port
+        exclude:
+          - device.destination_port_hashed@1
+      - name: no_temporal
+        exclude:
+          - device.bytes_sent_5m@1
+    execution_manifest_requires:
+      - dataset_snapshot
+      - split_version
+      - resolved_feature_set
+      - fitted_artifacts
+      - backend_profile
+      - code_commit
+      - environment_lock
+      - seeds

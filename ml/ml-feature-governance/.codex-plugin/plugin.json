@@ -1,0 +1,33 @@
+{
+  "name": "ml-feature-governance",
+  "version": "0.5.0",
+  "description": "Enforces a typed, versioned, engine-neutral ML feature-contract architecture across Codex, Cursor, and Claude Code.",
+  "author": {
+    "name": "ML Feature Governance Contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "machine-learning",
+    "feature-engineering",
+    "data-engineering",
+    "governance",
+    "data-contracts"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ML Feature Governance",
+    "shortDescription": "Portable ML feature contracts and validation",
+    "longDescription": "Design, validate, and review typed versioned ML feature graphs, feature sets, experiments, fitted artifacts, and backend mappings.",
+    "developerName": "ML Feature Governance Contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Initialize ML feature governance in this repository.",
+      "Review this feature change for leakage and portability.",
+      "Validate the canonical feature platform contract."
+    ]
+  }
+}
