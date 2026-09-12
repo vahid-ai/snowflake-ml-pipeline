@@ -1,0 +1,32 @@
+{
+  "name": "snowflake-ml-pipeline",
+  "interface": {
+    "displayName": "Snowflake Ml Pipeline"
+  },
+  "plugins": [
+    {
+      "name": "ml-feature-governance",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ml-feature-governance"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "agent-code-intelligence",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-code-intelligence"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

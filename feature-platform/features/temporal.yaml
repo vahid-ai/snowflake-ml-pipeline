@@ -1,0 +1,28 @@
+spec_version: "1.0"
+namespace: device
+features:
+  - id: device.bytes_sent_5m
+    version: 1
+    entity: device
+    semantic_type: continuous
+    inputs:
+      - device.bytes_sent_raw@1
+    transform:
+      kind: window_aggregate
+      aggregation: sum
+      window:
+        type: trailing
+        duration: 5m
+        time_column: event_time
+        partition_by: [device_id]
+        closed: left
+    temporal:
+      availability_lag: 0s
+      point_in_time_required: true
+      late_arrival_policy: recompute_on_backfill
+    output:
+      type: float64
+      nullable: false
+    model_representation:
+      kind: scalar
+      dtype: float32

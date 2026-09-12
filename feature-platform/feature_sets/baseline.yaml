@@ -1,0 +1,19 @@
+spec_version: "1.0"
+feature_sets:
+  - id: device.anomaly_baseline
+    version: 1
+    entity: device
+    features:
+      - device.destination_port_hashed@1
+      - device.bytes_sent_standardized@1
+      - device.bytes_sent_5m@1
+    output_layout:
+      categorical:
+        dtype: int32
+        features:
+          - device.destination_port_hashed@1
+      numerical:
+        dtype: float32
+        features:
+          - device.bytes_sent_standardized@1
+          - device.bytes_sent_5m@1

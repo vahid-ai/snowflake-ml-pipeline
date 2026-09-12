@@ -1,0 +1,10 @@
+spec_version = "1.0"
+canonical_root = "feature-platform"
+generated_root = "feature-platform/generated"
+default_format = "yaml"
+reference_semantics = "arrow-like"
+require_versioned_refs = true
+require_point_in_time_for_windows = true
+fail_on_backend_coercion = true
+require_change_contract_for_semantic_changes = true
+require_human_approval_for_breaking_changes = true

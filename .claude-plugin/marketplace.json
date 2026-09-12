@@ -1,0 +1,16 @@
+{
+  "name": "snowflake-ml-pipeline",
+  "owner": {"name": "vahid-ai"},
+  "plugins": [
+    {
+      "name": "ml-feature-governance",
+      "source": "./plugins/ml-feature-governance",
+      "description": "Repository-wide ML feature contracts and validation."
+    },
+    {
+      "name": "agent-code-intelligence",
+      "source": "./plugins/agent-code-intelligence",
+      "description": "Repository-wide code retrieval and verified memory guidance."
+    }
+  ]
+}

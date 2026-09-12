@@ -1,0 +1,66 @@
+spec_version: "1.0"
+backends:
+  python_arrow:
+    role: reference
+    type_mappings:
+      uint16: native
+      int32: native
+      int64: native
+      float32: native
+      float64: native
+      "fixed_size_list<float32, 128>": native
+
+  spark:
+    type_mappings:
+      uint16: checked_int32_emulation
+      int32: native
+      int64: native
+      float32: native
+      float64: native
+      "fixed_size_list<float32, 128>": array_with_length_constraint
+    operations:
+      trailing_window: native
+      model_transform: plugin
+
+  snowflake:
+    type_mappings:
+      uint16: number_with_range_constraint
+      int32: number_10_0
+      int64: number_19_0
+      float32: widened_physical_with_tolerance_contract
+      float64: native_double
+      "fixed_size_list<float32, 128>": array_with_shape_constraint
+    operations:
+      trailing_window: native_sql
+      model_transform: snowpark_plugin
+
+  duckdb:
+    type_mappings:
+      uint16: native
+      int32: native
+      int64: native
+      float32: native
+      float64: native
+    operations:
+      trailing_window: native
+
+  polars:
+    type_mappings:
+      uint16: native
+      int32: native
+      int64: native
+      float32: native
+      float64: native
+    operations:
+      trailing_window: native
+
+  cudf:
+    type_mappings:
+      uint16: native
+      int32: native
+      int64: native
+      float32: native
+      float64: native
+    operations:
+      trailing_window: native
+      model_transform: plugin

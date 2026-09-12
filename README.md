@@ -1,5 +1,8 @@
 # snowflake-ml-pipeline
 
+Repository-wide agent guidance and ML feature governance are configured in [AGENTS.md](AGENTS.md).
+See [plugin setup and validation](docs/plugins.md) for the packages under `plugins/` and client configuration.
+
 dlt and dbt pipelines that ingest the Hugging Face dataset `IQSeC-Lab/LAMDA`
 **directly into a warehouse or lakehouse**. The Parquet shards are streamed from
 the Hub in Arrow batches and handed to dlt. A separate downloader copies the

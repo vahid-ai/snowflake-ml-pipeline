@@ -25,3 +25,7 @@ logs/
 
 # Benchmark outputs
 bench/artifacts/
+
+# Local fitted state; keep the scaffold marker only.
+.feature-platform/state/*
+!.feature-platform/state/.gitkeep
