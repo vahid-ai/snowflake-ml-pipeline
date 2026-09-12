@@ -1,0 +1,20 @@
+---
+description: Enforce canonical, typed, versioned ML feature contracts and backend portability.
+alwaysApply: true
+---
+
+When a repository contains `feature-platform/`, treat it as the canonical semantic source of truth for ML features.
+
+- Use immutable `feature_id@version` references and separate semantic type, logical type, and model representation.
+- Keep raw and transformed values as distinct DAG nodes.
+- Keep fitted values in immutable artifacts fitted on an explicit training split.
+- Make event time, availability time, window closure, and point-in-time behavior explicit.
+- Keep backend-specific code behind adapters; never hand-edit `feature-platform/generated/`.
+- Run `python .feature-platform/tools/featurectl.py validate --project-dir .` after canonical edits.
+- Use the plugin's `change`, `experiment`, `validate`, and `review` skills for governed work.
+- Stop for explicit user approval before implementing a compatibility-breaking migration.
+
+For Iceberg work, read `feature-platform/docs/iceberg-metadata.md`: canonical types/nullability
+are required contracts, actual schemas live in Iceberg, field IDs are table-scoped, and
+resolved datasets pin snapshots independently of feature versions. Keep docs as prose
+and normalization in separate fitted-transform nodes.

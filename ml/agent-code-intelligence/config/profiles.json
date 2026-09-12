@@ -1,0 +1,37 @@
+{
+  "minimal": [
+    "serena",
+    "context7",
+    "deepwiki",
+    "repomix"
+  ],
+  "semantic": [
+    "serena",
+    "context7",
+    "deepwiki",
+    "repomix",
+    "grepai"
+  ],
+  "graph": [
+    "serena",
+    "context7",
+    "deepwiki",
+    "codegraph"
+  ],
+  "memory": [
+    "serena",
+    "context7",
+    "mem0",
+    "graphiti"
+  ],
+  "full": [
+    "serena",
+    "context7",
+    "deepwiki",
+    "repomix",
+    "grepai",
+    "codegraph",
+    "mem0",
+    "graphiti"
+  ]
+}

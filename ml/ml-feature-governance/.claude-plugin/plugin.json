@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "ml-feature-governance",
+  "displayName": "ML Feature Governance",
+  "version": "0.5.0",
+  "description": "Enforces an engine-agnostic, typed, versioned ML feature-contract architecture across Claude Code, Cursor, and OpenAI Codex.",
+  "license": "MIT",
+  "keywords": [
+    "machine-learning",
+    "feature-engineering",
+    "data-engineering",
+    "governance",
+    "data-contracts",
+    "spark",
+    "iceberg",
+    "snowflake",
+    "duckdb",
+    "polars",
+    "rapids",
+    "ray",
+    "dask"
+  ]
+}

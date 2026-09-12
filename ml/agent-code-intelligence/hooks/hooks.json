@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|PowerShell|mcp__.*|.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT}/scripts/capture_failure.py"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "plugins": [
+    {
+      "name": "agent-code-intelligence",
+      "source": {
+        "path": "./agent-code-intelligence-1.1.0"
+      },
+      "interface": {
+        "displayName": "Agent Code Intelligence"
+      }
+    }
+  ]
+}

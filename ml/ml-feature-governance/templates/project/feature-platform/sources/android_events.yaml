@@ -1,0 +1,16 @@
+spec_version: "1.0"
+sources:
+  - id: android_events
+    event_timestamp: event_time
+    availability_timestamp: ingestion_time
+    locations:
+      iceberg: prod.security.android_events
+      snowflake: SECURITY.ANDROID_EVENTS
+      local: data/android_events/*.parquet
+    columns:
+      device_id: {type: utf8, nullable: false}
+      event_time: {type: "timestamp[us, UTC]", nullable: false}
+      ingestion_time: {type: "timestamp[us, UTC]", nullable: false}
+      package_name: {type: utf8, nullable: true}
+      destination_port: {type: uint16, nullable: true}
+      bytes_sent: {type: int64, nullable: true}
