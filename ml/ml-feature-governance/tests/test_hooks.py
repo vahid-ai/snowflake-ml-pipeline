@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -16,6 +18,43 @@ SESSION = PLUGIN / "scripts" / "session_context.py"
 
 
 class HookTests(unittest.TestCase):
+    def dispatch(self, event, payload):
+        config = json.loads((PLUGIN / "hooks/hooks.json").read_text())
+        results = []
+        for group in config["hooks"][event]:
+            if not re.fullmatch(group.get("matcher", ".*"), payload["tool_name"]):
+                continue
+            for hook in group["hooks"]:
+                command = hook["command"].replace("${CLAUDE_PLUGIN_ROOT}", PLUGIN.as_posix())
+                args = shlex.split(command)
+                args[0] = sys.executable
+                results.append(subprocess.run(
+                    args, input=json.dumps(payload), text=True, capture_output=True,
+                ))
+        self.assertTrue(results, f"No configured hook matched {payload['tool_name']}")
+        return results
+
+    def test_configured_apply_patch_hooks_guard_and_validate(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td)
+            shutil.copytree(PLUGIN / "templates/project/feature-platform", project / "feature-platform")
+            payload = {"cwd": str(project), "tool_name": "apply_patch"}
+            for target in ("feature-platform/generated/model.sql", ".feature-platform/state/fit.json",
+                           ".feature-platform/tools/featurectl.py"):
+                payload["tool_input"] = {"command": f"*** Begin Patch\n*** Update File: {target}\n@@\n-old\n+new\n*** End Patch"}
+                for result in self.dispatch("PreToolUse", payload):
+                    self.assertEqual(result.returncode, 2, result.stderr)
+            target = "feature-platform/features/network.yaml"
+            payload["tool_input"] = {"command": f"*** Begin Patch\n*** Update File: {target}\n@@\n-old\n+new\n*** End Patch"}
+            for event in ("PreToolUse", "PostToolUse"):
+                for result in self.dispatch(event, payload):
+                    self.assertEqual(result.returncode, 0, result.stderr)
+            path = project / target
+            path.write_text(path.read_text().replace("type: uint16", "type: int", 1))
+            for result in self.dispatch("PostToolUse", payload):
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("invalid/ambiguous output type", result.stderr)
+
     def run_guard(
         self, project: Path, file_path: Path | None = None, payload: dict[str, object] | None = None
     ) -> subprocess.CompletedProcess[str]:

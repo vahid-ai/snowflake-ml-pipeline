@@ -30,6 +30,7 @@ BACKEND_CODE_KEYS = {
 }
 VERSIONED_REF = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*@[1-9][0-9]*$")
 ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
+DURATION_RE = re.compile(r"[1-9][0-9]*(?:ns|us|ms|s|m|h|d|w)")
 TYPE_PATTERNS = [
     re.compile(r"^timestamp\[(s|ms|us|ns)(,\s*[^\]]+)?\]$"),
     re.compile(r"^decimal(128|256)\([1-9][0-9]*,\s*[0-9]+\)$"),
@@ -224,8 +225,12 @@ def validate_feature(path: Path, f: Any, errors: list[str]) -> str | None:
                     errors.append(f"{prefix}: plugin transform {fid!r} requires an equivalence policy")
             if kind == "fitted":
                 fit = tr.get("fit")
-                if not isinstance(fit, dict) or not fit.get("split"):
-                    errors.append(f"{prefix}: fitted transform {fid!r} requires transform.fit.split")
+                split = fit.get("split") if isinstance(fit, dict) else None
+                if not isinstance(split, str) or split not in {"train", "training"}:
+                    errors.append(
+                        f"{prefix}: fitted transform {fid!r} requires transform.fit.split: train or training; "
+                        "evaluation and unspecified splits cannot fit state"
+                    )
                 state = tr.get("state")
                 if state is not None:
                     if not isinstance(state, dict):
@@ -256,6 +261,26 @@ def validate_feature(path: Path, f: Any, errors: list[str]) -> str | None:
                     for key in ("type", "duration", "time_column", "partition_by", "closed"):
                         if key not in window:
                             errors.append(f"{prefix}: window feature {fid!r} missing window.{key}")
+                    for field, choices in (
+                        ("type", {"trailing", "tumbling", "sliding"}),
+                        ("closed", {"left", "right", "both", "neither"}),
+                    ):
+                        value = window.get(field)
+                        if not isinstance(value, str) or value not in choices:
+                            errors.append(f"{prefix}: {fid!r} window.{field} must be one of {sorted(choices)}")
+                    duration = window.get("duration")
+                    if not isinstance(duration, str) or DURATION_RE.fullmatch(duration) is None:
+                        errors.append(f"{prefix}: {fid!r} window.duration must be a positive integer with unit ns/us/ms/s/m/h/d/w")
+                    time_column = window.get("time_column")
+                    if not isinstance(time_column, str) or not time_column.strip():
+                        errors.append(f"{prefix}: {fid!r} window.time_column must be a non-empty column name")
+                    partitions = window.get("partition_by")
+                    if (
+                        not isinstance(partitions, list) or not partitions
+                        or not all(isinstance(p, str) and p.strip() for p in partitions)
+                        or len(set(partitions)) != len(partitions)
+                    ):
+                        errors.append(f"{prefix}: {fid!r} window.partition_by must be a non-empty list of distinct column names")
                 temporal = f.get("temporal")
                 if not isinstance(temporal, dict) or temporal.get("point_in_time_required") is not True:
                     errors.append(f"{prefix}: window feature {fid!r} must set temporal.point_in_time_required: true")
@@ -388,6 +413,9 @@ def validate_feature_bindings(
         entity = feature.get("entity")
         if not isinstance(entity, str) or entity not in entities:
             errors.append(f"{origins[key]}: feature {key} references unknown entity {entity!r}")
+        transform = feature.get("transform")
+        if isinstance(transform, dict) and transform.get("kind") == "window_aggregate":
+            validate_window_bindings(key, features, origins, sources, errors)
         if "source" not in feature:
             continue
         source_id = feature.get("source")
@@ -414,6 +442,47 @@ def validate_feature_bindings(
                 errors.append(
                     f"{origins[key]}: raw feature {key} nullability differs from source column {source_id}.{column_name}"
                 )
+
+
+def validate_window_bindings(
+    key: str,
+    features: dict[str, dict[str, Any]],
+    origins: dict[str, Path],
+    sources: dict[str, dict[str, Any]],
+    errors: list[str],
+) -> None:
+    """Resolve window column names against raw sources in the input lineage."""
+    window = features[key]["transform"].get("window")
+    if not isinstance(window, dict):
+        return
+    pending = [key]
+    visited: set[str] = set()
+    source_ids: set[str] = set()
+    while pending:
+        ref = pending.pop()
+        if ref in visited or ref not in features:
+            continue
+        visited.add(ref)
+        feature = features[ref]
+        source_id = feature.get("source")
+        if isinstance(source_id, str) and source_id in sources:
+            source_ids.add(source_id)
+        inputs = feature.get("inputs")
+        if isinstance(inputs, list):
+            pending.extend(item for item in inputs if isinstance(item, str))
+    if not source_ids:
+        errors.append(f"{origins[key]}: {key} window.time_column cannot resolve an input source")
+    partitions = window.get("partition_by")
+    partitions = partitions if isinstance(partitions, list) else []
+    for source_id in sorted(source_ids):
+        columns = sources[source_id]["columns"]
+        time_column = window.get("time_column")
+        column = columns.get(time_column) if isinstance(time_column, str) else None
+        if not isinstance(column, dict) or not str(column.get("type", "")).startswith("timestamp["):
+            errors.append(f"{origins[key]}: {key} window.time_column must reference a timestamp column in input source {source_id!r}")
+        for partition in partitions:
+            if not isinstance(partition, str) or partition not in columns:
+                errors.append(f"{origins[key]}: {key} window.partition_by references unknown column {partition!r} in input source {source_id!r}")
 
 
 def validate_capabilities(

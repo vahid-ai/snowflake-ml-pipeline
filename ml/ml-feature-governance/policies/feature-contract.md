@@ -72,6 +72,9 @@ MUST be isolated behind named adapter/plugin implementations with declared equiv
 Learned transform state MUST be fitted on an explicitly declared split and stored/versioned separately from the feature
 definition.
 
+The validator accepts `transform.fit.split: train` or `training`. Evaluation splits, mixed splits, and custom
+split labels are rejected; an explicit non-evaluation exception contract is not currently implemented.
+
 ### Verification
 
 - Reject mutable means, scales, medians, vocabularies, categories, or quantiles embedded in canonical definitions.
@@ -82,6 +85,11 @@ definition.
 ### Rule
 
 Time-dependent features MUST be computable using only information available at prediction time.
+
+Window contracts declare `type` as `trailing`, `tumbling`, or `sliding`, `closed` as `left`, `right`, `both`, or
+`neither`, and a positive integer duration with unit `ns`, `us`, `ms`, `s`, `m`, `h`, `d`, or `w` (for example `5m`).
+`time_column` must name a timestamp column and `partition_by` a non-empty list of distinct existing columns in
+each source reached through the feature's input lineage.
 
 ### Verification
 

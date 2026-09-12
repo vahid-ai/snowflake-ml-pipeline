@@ -30,6 +30,65 @@ class FeatureCtlTests(unittest.TestCase):
         p = self.run_validate()
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
 
+    def test_fitting_requires_a_training_split(self):
+        path = self.project / "feature-platform/features/network.yaml"
+        doc = yaml.safe_load(path.read_text())
+        fit = doc["features"][-1]["transform"]["fit"]
+        for split in ("test", "validation", "eval", "holdout", "train+test", True, ["train"], "", None):
+            with self.subTest(split=split):
+                fit["split"] = split
+                path.write_text(yaml.safe_dump(doc))
+                result = self.run_validate()
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("transform.fit.split", result.stdout)
+        for split in ("train", "training"):
+            fit["split"] = split
+            path.write_text(yaml.safe_dump(doc))
+            result = self.run_validate()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_invalid_window_values_are_rejected(self):
+        path = self.project / "feature-platform/features/temporal.yaml"
+        original = path.read_text()
+        cases = {
+            "type": ["future", "nonsense", None, []],
+            "closed": ["nonsense", "", None, []],
+            "duration": ["0s", "-5m", "5", "5months", "5m garbage", 5, None],
+            "partition_by": [[], "device_id", [""], [None], ["missing"], ["device_id", "device_id"]],
+            "time_column": ["", "missing", "bytes_sent", None, []],
+        }
+        for field, values in cases.items():
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    doc = yaml.safe_load(original)
+                    doc["features"][0]["transform"]["window"][field] = value
+                    path.write_text(yaml.safe_dump(doc))
+                    result = self.run_validate()
+                    self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                    self.assertIn("window." + field, result.stdout)
+
+    def test_window_columns_follow_input_lineage(self):
+        path = self.project / "feature-platform/features/temporal.yaml"
+        doc = yaml.safe_load(path.read_text())
+        feature = doc["features"][0]
+        feature["inputs"] = ["device.bytes_sent_log1p@1"]
+        path.write_text(yaml.safe_dump(doc))
+        result = self.run_validate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        sources_path = self.project / "feature-platform/sources/android_events.yaml"
+        sources = yaml.safe_load(sources_path.read_text())
+        import copy
+        unrelated = copy.deepcopy(sources["sources"][0])
+        unrelated["id"] = "unrelated"
+        unrelated["columns"]["other_time"] = {"type": "timestamp[us, UTC]", "nullable": False}
+        sources["sources"].append(unrelated)
+        sources_path.write_text(yaml.safe_dump(sources))
+        feature["transform"]["window"]["time_column"] = "other_time"
+        path.write_text(yaml.safe_dump(doc))
+        result = self.run_validate()
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("window.time_column", result.stdout)
+
     def test_iceberg_experiment_pin_is_checked_in_project(self):
         path = self.project / "feature-platform" / "experiments" / "ablation.yaml"
         doc = yaml.safe_load(path.read_text())

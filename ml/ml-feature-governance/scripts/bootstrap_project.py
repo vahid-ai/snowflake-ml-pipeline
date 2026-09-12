@@ -43,10 +43,10 @@ def copy_missing(src_root: Path, dst_root: Path) -> tuple[list[str], list[str]]:
         dst = dst_root / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists():
-            preserved.append(str(rel))
+            preserved.append(rel.as_posix())
             continue
         shutil.copy2(src, dst)
-        created.append(str(rel))
+        created.append(rel.as_posix())
     return created, preserved
 
 

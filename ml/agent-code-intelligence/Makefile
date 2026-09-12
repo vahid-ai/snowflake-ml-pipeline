@@ -1,7 +1,7 @@
 .PHONY: test doctor profiles zip
 
 test:
-	python3 tests/test_plugin.py
+	python3 -m unittest discover -s tests -v
 
 doctor:
 	python3 scripts/tool_doctor.py

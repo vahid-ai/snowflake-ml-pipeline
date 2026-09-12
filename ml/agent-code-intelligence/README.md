@@ -89,6 +89,17 @@ The Claude manifest lives at `.claude-plugin/plugin.json` and points to `skills/
 
 The Codex manifest lives at `.codex-plugin/plugin.json`. For local/team distribution, place this plugin in a Codex plugin marketplace/source according to the current Codex plugin documentation.
 
+## Tests
+
+From this plugin directory, install the test dependency and run the complete suite:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 -m unittest discover -s tests -v
+```
+
+The suite parses skill frontmatter as YAML and exercises opt-in failure capture with synthetic credentials.
+
 ## Failure capture
 
 The `PostToolUseFailure` hook is **disabled by default at the data-capture level**. To retain sanitized failure leads in the plugin data directory:

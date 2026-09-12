@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — repository integration fixes
+
+- Correct Codex publisher/prompt metadata and remove the unsupported manifest `hooks` field.
+- Quote the memory-router description and parse all skill frontmatter as YAML in tests.
+- Redact credential aliases, quoted values, nested error data, and escaped command fragments before
+  truncating opt-in failure records. Preserve disabled capture and benign diagnostic fields.
+- Add subprocess regression tests for failure capture and refresh package checksums.
+
 ## 1.1.0 — 2026-08-18
 
 - Added a read-only Haiku codebase-intelligence subagent for automatic search and understanding

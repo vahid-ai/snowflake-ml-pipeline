@@ -1,6 +1,6 @@
 ---
 name: memory-router
-description: Decide where durable coding-agent knowledge should live: native Claude/Codex memory, local verified lessons, Mem0, Graphiti, Cognee, or Letta, while preventing redundant or unverified memory writes.
+description: "Decide where durable coding-agent knowledge should live: native Claude/Codex memory, local verified lessons, Mem0, Graphiti, Cognee, or Letta, while preventing redundant or unverified memory writes."
 ---
 
 # Memory router

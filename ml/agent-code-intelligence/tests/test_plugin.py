@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import json, re, subprocess, sys, tempfile, os
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -13,6 +14,12 @@ for manifest in [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]:
     assert data["version"] == "1.1.0"
     assert data["skills"] == "./skills/"
 
+codex = json.loads((ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
+assert "hooks" not in codex
+assert codex["author"]["name"].strip()
+assert codex["interface"]["defaultPrompt"]
+assert all(isinstance(prompt, str) and prompt.strip() for prompt in codex["interface"]["defaultPrompt"])
+
 agent = (ROOT / "agents" / "codebase-intelligence.md").read_text()
 assert agent.startswith("---\n")
 assert "\nname: codebase-intelligence\n" in agent
@@ -23,10 +30,13 @@ assert "\n  - Write\n" in agent and "\n  - Edit\n" in agent
 skills = list((ROOT/"skills").glob("*/SKILL.md"))
 assert len(skills) >= 10
 for p in skills:
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     assert text.startswith("---\n")
     assert re.search(r"\nname: [a-z0-9-]+\n", text)
     assert "\ndescription: " in text
+    metadata = yaml.safe_load(text.split("---\n", 2)[1])
+    assert metadata["name"] == p.parent.name
+    assert isinstance(metadata["description"], str) and metadata["description"].strip()
 
 # Ensure profiles only reference known integrations.
 ints = json.loads((ROOT/"config/integrations.json").read_text())

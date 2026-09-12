@@ -1,3 +1,9 @@
+# Unreleased — repository integration fixes
+
+- Match `apply_patch` in pre/post tool hooks and test configured dispatch through the actual scripts.
+- Reject non-training fit splits and validate window boundaries, durations, partition columns, and timestamp lineage.
+- Normalize bootstrap report paths to forward slashes on Windows.
+
 # 0.5.0
 
 - Integrate Iceberg docs, table-scoped field identity, physical-schema checks, and independent snapshot pins.
