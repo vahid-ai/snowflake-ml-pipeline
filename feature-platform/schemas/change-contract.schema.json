@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ml-feature-governance/change-contract.schema.json",
+  "title": "ML Feature Change Contract",
+  "type": "object",
+  "required": ["spec_version", "changes"],
+  "properties": {
+    "spec_version": {"const": "1.0"},
+    "changes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "version", "status", "change_type", "intent", "compatibility", "verification", "approval"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"},
+          "version": {"type": "integer", "minimum": 1},
+          "status": {"enum": ["proposed", "approved", "implemented", "verified", "superseded"]},
+          "change_type": {"enum": ["implementation_only", "additive_semantic", "breaking_semantic", "backend_support", "migration", "experiment_only"]},
+          "intent": {"type": "string", "minLength": 1},
+          "compatibility": {"enum": ["backward_compatible", "breaking", "migration_required"]},
+          "affected_features": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*@[1-9][0-9]*$"}},
+          "proposed_features": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*@[1-9][0-9]*$"}},
+          "affected_consumers": {"type": "array", "items": {"type": "string"}},
+          "migration": {
+            "type": "object",
+            "properties": {"strategy": {"type": "string", "minLength": 1}}
+          },
+          "verification": {
+            "type": "object",
+            "required": ["required"],
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {"enum": ["contract", "dag", "leakage", "portability", "golden_differential", "backward_compatibility", "migration"]},
+                "uniqueItems": true
+              }
+            }
+          },
+          "approval": {
+            "type": "object",
+            "required": ["required"],
+            "properties": {"required": {"type": "boolean"}}
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

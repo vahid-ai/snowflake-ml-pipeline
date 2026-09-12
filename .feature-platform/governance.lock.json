@@ -1,0 +1,20 @@
+{
+  "plugin": {
+    "name": "ml-feature-governance",
+    "version": "0.5.0"
+  },
+  "edition": "standalone",
+  "clients": [
+    "claude-code",
+    "cursor",
+    "openai-codex"
+  ],
+  "contract_version": "1.0",
+  "canonical_root": "feature-platform",
+  "generated_root": "feature-platform/generated",
+  "managed_files": {
+    ".feature-platform/tools/featurectl.py": "26f2c3dca6ad886d45237e7fe04b7288517b65e62644668827e5f15b30af3f35",
+    ".cursor/rules/ml-feature-governance.mdc": "220fafec56656a36df39fd0386fccb2d06753e410ec43da7dc8ff75d29774761"
+  },
+  "generated_at": "2026-09-12T00:37:16.383815+00:00"
+}

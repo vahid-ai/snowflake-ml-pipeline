@@ -1,0 +1,7 @@
+spec_version: "1.0"
+entities:
+  - id: device
+    join_keys:
+      - name: device_id
+        type: utf8
+        nullable: false

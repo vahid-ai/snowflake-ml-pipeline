@@ -1,0 +1,11 @@
+{
+  "extraKnownMarketplaces": {
+    "snowflake-ml-pipeline": {
+      "source": {"source": "directory", "path": "."}
+    }
+  },
+  "enabledPlugins": {
+    "ml-feature-governance@snowflake-ml-pipeline": true,
+    "agent-code-intelligence@snowflake-ml-pipeline": true
+  }
+}

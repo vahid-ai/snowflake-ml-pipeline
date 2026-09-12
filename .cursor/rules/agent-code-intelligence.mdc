@@ -1,0 +1,7 @@
+---
+description: Apply the repository's code retrieval and verified memory guidance.
+alwaysApply: true
+---
+
+Read the repository root `AGENTS.md` and follow its Agent Code Intelligence section for repository work.
+The canonical retrieval policy is `plugins/agent-code-intelligence/skills/codebase-intelligence-router/SKILL.md`.

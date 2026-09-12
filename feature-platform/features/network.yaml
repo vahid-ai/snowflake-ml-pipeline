@@ -1,0 +1,82 @@
+spec_version: "1.0"
+namespace: device
+features:
+  - id: device.destination_port_raw
+    version: 1
+    entity: device
+    source: android_events
+    column: destination_port
+    semantic_type: categorical
+    output:
+      type: uint16
+      nullable: true
+    validation:
+      min: 0
+      max: 65535
+
+  - id: device.destination_port_hashed
+    version: 1
+    entity: device
+    semantic_type: categorical
+    inputs:
+      - device.destination_port_raw@1
+    transform:
+      kind: builtin
+      op: stable_hash_bucket
+      params:
+        algorithm: murmur3_32
+        seed: 1847
+        encoding: utf8
+        num_buckets: 65536
+        null_bucket: 0
+    output:
+      type: int32
+      nullable: false
+    model_representation:
+      kind: categorical_index
+      dtype: int32
+      cardinality: 65536
+
+  - id: device.bytes_sent_raw
+    version: 1
+    entity: device
+    source: android_events
+    column: bytes_sent
+    semantic_type: continuous
+    output:
+      type: int64
+      nullable: true
+
+  - id: device.bytes_sent_log1p
+    version: 1
+    entity: device
+    semantic_type: continuous
+    inputs:
+      - device.bytes_sent_raw@1
+    transform:
+      kind: builtin
+      op: log1p_nonnegative
+    output:
+      type: float32
+      nullable: true
+
+  - id: device.bytes_sent_standardized
+    version: 1
+    entity: device
+    semantic_type: continuous
+    inputs:
+      - device.bytes_sent_log1p@1
+    transform:
+      kind: fitted
+      op: standard_scaler
+      fit:
+        split: train
+        grouping: global
+      state:
+        artifact_type: scaler_parameters
+    missing:
+      strategy: constant
+      value: 0.0
+    output:
+      type: float32
+      nullable: false
