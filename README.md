@@ -149,6 +149,21 @@ the raw data, adding three Iceberg tables that join against `lamda_samples`:
 - `lamda_column_glossary` — the non-feature metadata and provenance columns of
   `lamda_samples`
 
+## Train a malware detection model
+
+The malware pipeline reads a pinned R2 Iceberg snapshot, uses the published
+Baseline static features, and trains a sparse logistic classifier with separate
+training, validation and test partitions. Model artifacts, evaluation metrics,
+and replay manifests are saved locally. Live training requires R2 credentials.
+
+```powershell
+uv sync --locked --extra ml
+infisical run --projectId=0cfed731-cdf4-46b8-b831-2d74be495575 --env=dev -- uv run --locked --extra ml python scripts/train_lamda_malware.py
+```
+
+See [malware detection](docs/malware_detection.md) for setup, temporal evaluation,
+local Iceberg input, inference and current validation status.
+
 ## Run dbt
 
 ```powershell

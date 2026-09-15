@@ -1,0 +1,12 @@
+spec_version: '1.0'
+backends:
+  lamda_iceberg_scipy_v1:
+    type_mappings:
+      int64: Iceberg int or long to Arrow integer, validated binary values exactly
+        represented in CSR float32
+      float32: SciPy CSR float32 native
+    null_policy: Reject null selected inputs or required metadata
+    operations:
+      static_binary_projection: scripts.lamda_ml.binary_matrix
+    equivalence: Exact binary values and order across Arrow integer widths and local/R2
+      Iceberg. No Snowflake training adapter claimed.

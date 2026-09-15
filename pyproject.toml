@@ -21,3 +21,5 @@ dependencies = [
 # of the main dependencies so the ingestion pipeline does not carry it.
 #   uv sync --extra duckdb
 duckdb = ["duckdb>=1.2.2"]
+# Sparse malware training and inference; ingestion does not need these.
+ml = ["scikit-learn>=1.6,<1.9", "scipy>=1.13", "numpy>=1.26", "joblib>=1.4", "pyyaml>=6.0"]
