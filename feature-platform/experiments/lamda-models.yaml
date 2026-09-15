@@ -1,0 +1,40 @@
+spec_version: '1.0'
+experiments:
+- id: lamda.model_comparison
+  version: 1
+  base_feature_set: lamda.malware_baseline@1
+  variants:
+  - name: sgd
+    backend: lamda_iceberg_scipy_v1
+    fit: All training rows with training-only balanced class weights
+    score: Malware probability from logistic regression
+  - name: mlp
+    backend: lamda_iceberg_lightning_v1
+    fit: All training rows with training-only balanced class weights
+    score: Sigmoid malware score from supervised feedforward network
+  - name: autoencoder
+    backend: lamda_iceberg_lightning_v1
+    fit: Benign training rows only; mean binary cross-entropy reconstruction loss
+    score: Mean binary cross-entropy reconstruction error; higher means more anomalous,
+      not a calibrated malware probability
+  split:
+    id: lamda.published_hash_validation@1
+    temporal_option: lamda.collection_month@1
+    duplicates: Reject repeated APK hashes before fitting
+  model_selection: Fixed epoch budget; validation average precision selects candidates;
+    validation F1 selects threshold; test evaluated after selection. No test fitting.
+  tracking: Required MLflow parent run and candidate child runs; epoch losses,
+    parameters, metrics, model artifacts and resolved input provenance.
+  execution_manifest_requires:
+  - dataset_snapshot
+  - table_uuid
+  - field_ids
+  - resolved_feature_set
+  - split_version
+  - backend_profile
+  - code_commit
+  - environment_lock
+  - seeds
+  - model_parameters
+  - fitted_artifacts
+  - mlflow_run_id

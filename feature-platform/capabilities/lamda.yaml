@@ -10,3 +10,14 @@ backends:
       static_binary_projection: scripts.lamda_ml.binary_matrix
     equivalence: Exact binary values and order across Arrow integer widths and local/R2
       Iceberg. No Snowflake training adapter claimed.
+  lamda_iceberg_lightning_v1:
+    type_mappings:
+      int64: Shared validated Iceberg and Arrow binary projection to CSR float32
+      float32: Dense PyTorch float32 minibatches from CSR, without normalization
+    null_policy: Reject null inputs through the shared binary adapter
+    operations:
+      static_binary_projection: scripts.lamda.data.binary_matrix
+      tensor_minibatch: scripts.lamda.models.lightning.SparseBatches
+    equivalence: Exact input values and order compared with the SciPy adapter.
+      Neural scores tested for finite values and checkpoint reload equivalence on CPU;
+      no prediction equality between different models or CPU/GPU bitwise promise.

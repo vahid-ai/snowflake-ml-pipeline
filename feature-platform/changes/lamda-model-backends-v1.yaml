@@ -1,0 +1,48 @@
+spec_version: '1.0'
+changes:
+- id: lamda.model_backends
+  version: 1
+  status: verified
+  change_type: backend_support
+  intent: Separate model adapters and shared MLflow tracking; add Lightning MLP and
+    benign-only autoencoder training with the existing snapshot-pinned feature inputs.
+  compatibility: backward_compatible
+  affected_features: []
+  proposed_feature_sets: [lamda.malware_baseline@1]
+  affected_consumers:
+  - scripts/train_lamda_malware.py
+  - scripts/predict_lamda_malware.py
+  source_impact: No source writes, new columns, or feature changes. Existing Iceberg
+    schema, snapshot pinning, entity identities and split policies remain authoritative.
+  availability: No new time joins; collection time does not establish historical availability.
+  representation: CSR float32 converted to dense float32 only per neural minibatch,
+    preserving all binary values and canonical feature order exactly.
+  fitted_state: MLP and SGD fit training rows only. Autoencoder fits benign training
+    rows only; its latent layer is internal model state, not a reusable feature.
+    Validation chooses candidate and threshold; held-out test never fits weights.
+  backend_impact: Add lamda_iceberg_lightning_v1, single CPU or GPU device.
+  migration:
+    strategy: Additive model artifact format v2; retain inference for legacy v1 SGD
+      artifacts and SGD as the default model. No feature backfill or migration.
+  verification:
+    required: [contract, dag, leakage, portability, golden_differential, backward_compatibility]
+    evidence:
+      baseline: featurectl doctor and validate passed before editing; working tree clean.
+      canonical_validation: featurectl validate passed after backend and experiment additions.
+      tests: 31 repository tests passed across the full suite and targeted rerun.
+        The CLI fixture catalog name was corrected to match the production CLI.
+        Real MLflow runs and CPU Lightning training were exercised with synthetic data.
+      architecture_review: Existing feature identities, types and input layout retained;
+        model-internal latent state is saved with the model, not registered as a feature.
+        Shared orchestration owns tracking and selection; adapters receive training shards.
+      leakage_review: Optimizer row counts match training only; autoencoder labels all
+        benign. Validation chooses candidate and threshold; test is scored afterward.
+      portability_review: Exact CSR-to-float32 tensor equivalence at all 4561 columns;
+        native checkpoint and saved-predictor scores agree within 1e-6 on CPU.
+        Same-seed CPU replay and legacy v1 SGD inference tested. GPU not exercised.
+      tracking_review: Parent and child metrics/artifacts verified with MlflowClient;
+        failed source/adapter runs marked FAILED, exception text omitted, tracking
+        outage prevents fitting, caches and per-APK predictions excluded from uploads.
+      live_training: No full R2 training run performed as part of this implementation.
+  approval:
+    required: false

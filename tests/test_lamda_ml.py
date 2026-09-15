@@ -10,6 +10,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from uuid import uuid4
 
 import joblib
 import numpy as np
@@ -17,6 +18,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyiceberg.catalog import load_catalog
 from sklearn.metrics import f1_score
+from mlflow import MlflowClient
+from scripts.lamda.tracking import TrackingConfig
 
 from scripts.lamda_ml import (
     IcebergInput, SplitPolicy, binary_matrix, choose_threshold, load_contract,
@@ -103,6 +106,9 @@ class IcebergMLTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
+        self.tracking = TrackingConfig(uri="sqlite:///:memory:", experiment="fixture-" + uuid4().hex)
+        MlflowClient(tracking_uri=self.tracking.uri).create_experiment(
+            self.tracking.experiment, artifact_location=(self.root / "mlflow-artifacts").as_uri())
         self.catalog = load_catalog("test", **local_catalog_config(self.root))
         self.catalog.create_namespace("raw_lamda")
         data = fixture()
@@ -142,9 +148,9 @@ class IcebergMLTests(unittest.TestCase):
         duplicate = fixture(1).set_column(0, "hash", pa.array([fixture(1)["hash"][0].as_py().upper()]))
         duplicate = duplicate.set_column(3, "split_name", pa.array(["train"]))
         self.table.append(duplicate)
-        with patch("scripts.lamda_ml.SGDClassifier.partial_fit") as fit:
+        with patch("scripts.lamda.models.sgd.SGDClassifier.partial_fit") as fit:
             with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "Repeated APK"):
-                train(self.source(), self.root / "bad", epochs=1)
+                train(self.source(), self.root / "bad", epochs=1, tracking=self.tracking)
             fit.assert_not_called()
         self.assertEqual(json.loads((self.root / "bad/status.json").read_text())["status"], "failed")
         self.assertFalse((self.root / "bad/model.joblib").exists())
@@ -157,12 +163,12 @@ class IcebergMLTests(unittest.TestCase):
     def test_full_training_artifact_inference_and_no_test_fitting(self):
         output = self.root / "model"
         with contextlib.redirect_stdout(io.StringIO()):
-            report = train(self.source(), output, batch_size=80, epochs=2)
+            report = train(self.source(), output, batch_size=80, epochs=2, tracking=self.tracking)
         artifact = joblib.load(output / "model.joblib")
         manifest = json.loads((output / "manifest.json").read_text())
         training_count = sum(manifest["class_counts"]["train"])
         # t_ is the number of SGD updates plus one, ruling out validation/test fits.
-        self.assertEqual(artifact["model"].t_, 2 * training_count + 1)
+        self.assertEqual(artifact["model"].estimator.t_, 2 * training_count + 1)
         self.assertEqual(sum(map(sum, manifest["class_counts"].values())), 400)
         self.assertEqual(report["test"]["rows"], 80)
         self.assertGreater(report["test"]["average_precision"], 0.9)
@@ -187,10 +193,10 @@ class IcebergMLTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             predict(artifact, inputs.drop(["feat_0"]))
         with self.assertRaises(FileExistsError):
-            train(self.source(), output, epochs=1)
+            train(self.source(), output, epochs=1, tracking=self.tracking)
         # Replaying identical source/seed is deterministic in the same environment.
         with contextlib.redirect_stdout(io.StringIO()):
-            replay = train(self.source(), self.root / "replay", batch_size=80, epochs=2)
+            replay = train(self.source(), self.root / "replay", batch_size=80, epochs=2, tracking=self.tracking)
         self.assertEqual(report, replay)
 
 

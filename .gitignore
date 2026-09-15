@@ -12,6 +12,12 @@ wheels/
 # Local credentials
 .env
 
+# MLflow defaults used by ad-hoc clients (the pipeline defaults under data/).
+mlruns/
+mlartifacts/
+mlflow.db
+mlflow.db-*
+
 # Local scratch data (except the committed LAMDA feature dictionary)
 data/*
 !data/lamda_feature_descriptions.json
