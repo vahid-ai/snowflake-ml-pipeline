@@ -170,6 +170,10 @@ Add `--extra lightning` to install/run neural models and select `--model mlp` or
 See [malware detection](docs/malware_detection.md) for model options, the MLflow UI,
 temporal evaluation, local Iceberg input, inference and current validation status.
 
+Training now runs a full raw-data, engineered-feature, and model-input audit before
+fitting. See [the preflight audit](docs/lamda_audit.md) for standalone use, EDA reports,
+automatic observed metadata updates, and the opt-in count-to-presence feature set.
+
 ## Run dbt
 
 ```powershell

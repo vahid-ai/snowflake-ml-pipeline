@@ -3,16 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import yaml
-from pyiceberg.expressions import And, EqualTo
-from pyiceberg.io.pyarrow import ArrowScan, schema_to_pyarrow
-from pyiceberg.types import IntegerType, LongType, StringType
+from pyiceberg.expressions import AlwaysTrue, And, EqualTo
+from pyiceberg.io.pyarrow import schema_to_pyarrow
 from scipy import sparse
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,29 +30,36 @@ def write_json(path: Path, value) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
 
-def load_contract() -> dict:
+def load_contract(feature_set="lamda.malware_baseline@1") -> dict:
     """Resolve model input order from canonical definitions, not table order."""
-    fs = yaml.safe_load((ROOT / "feature-platform/feature_sets/lamda.yaml").read_text(encoding="utf-8"))["feature_sets"][0]
-    features = yaml.safe_load((ROOT / "feature-platform/features/lamda.yaml").read_text(encoding="utf-8"))["features"]
-    by_ref = {f"{f['id']}@{f['version']}": f for f in features}
-    selected = [by_ref[ref] for ref in fs["features"]]
-    columns = [f["column"] for f in selected]
+    from scripts.lamda.contracts import read_definitions
+    sets = [fs for path in sorted((ROOT / "feature-platform/feature_sets").glob("*.yaml"))
+            for fs in yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.CSafeLoader)["feature_sets"]]
+    fs = next((fs for fs in sets if f"{fs['id']}@{fs['version']}" == feature_set), None)
+    if fs is None:
+        raise ValueError(f"Unknown feature set: {feature_set}")
+    by_ref = read_definitions(ROOT)
+    selected, columns = {}, []
+    def resolve(ref):
+        if ref in selected:
+            return
+        feature = by_ref[ref]
+        selected[ref] = feature
+        for dep in feature.get("inputs", []):
+            resolve(dep)
+        if "column" in feature and feature["column"] not in columns:
+            columns.append(feature["column"])
+    for ref in fs["features"]:
+        resolve(ref)
     contract = fs["input_contract"]
     if len(columns) != len(set(columns)) or len(columns) != contract["shape"][0]:
         raise ValueError("Canonical feature count/order is inconsistent")
     if fs["output_layout"]["numerical"]["features"] != fs["features"]:
         raise ValueError("Canonical model layout differs from feature order")
-    for feature in selected:
-        if (feature["source"] != contract["source"] or feature["semantic_type"] != "binary"
-                or feature["output"] != {"type": "int64", "nullable": True}
-                or feature["model_representation"]["dtype"] != "float32"
-                or feature["missing"]["strategy"] != "error"
-                or feature["validation"] != {"min": 0, "max": 1}):
-            raise ValueError("Feature contract is unsupported by the binary adapter")
     if digest(ROOT / "data/lamda_feature_descriptions.json") != contract["dictionary_sha256"]:
         raise ValueError("Feature dictionary changed; register a new feature-set version")
     return {**contract, "id": f"{fs['id']}@{fs['version']}",
-            "features": fs["features"], "columns": columns, "dtype": "float32"}
+            "features": fs["features"], "columns": columns, "dtype": "float32", "definitions": selected}
 
 
 def binary_matrix(batch: pa.Table | pa.RecordBatch, columns: list[str]) -> sparse.csr_matrix:
@@ -128,105 +133,58 @@ class IcebergInput:
             raise ValueError("Source has no requested snapshot (empty table or expired snapshot)")
         self.snapshot_id = snapshot.snapshot_id
         self.fields = tuple(METADATA) + tuple(contract["columns"])
+        snapshot_schema = table.schemas()[snapshot.schema_id if snapshot.schema_id is not None else table.schema().schema_id]
+        predicate = (And(EqualTo("dataset_id", contract["dataset_id"]), EqualTo("config_name", contract["config_name"]))
+                     if {"dataset_id", "config_name"} <= set(snapshot_schema.column_names) else AlwaysTrue())
         self.scan = table.scan(
             snapshot_id=self.snapshot_id, selected_fields=self.fields,
-            row_filter=And(EqualTo("dataset_id", contract["dataset_id"]),
-                           EqualTo("config_name", contract["config_name"])),
+            row_filter=predicate,
         )
-        schema = self.scan.projection()
+        self.audit_scan = table.scan(snapshot_id=self.snapshot_id, row_filter=predicate,
+                                     selected_fields=tuple(snapshot_schema.column_names))
+        schema = self.audit_scan.projection()
         bindings = []
-        for name in self.fields:
+        for name in schema.column_names:
             field = schema.find_field(name)
-            allowed = (IntegerType, LongType) if name == "label" or name in contract["columns"] else (StringType,)
-            if not isinstance(field.field_type, allowed):
-                raise ValueError(f"Unsupported Iceberg type for {name}: {field.field_type}")
             bindings.append({"column": name, "field_id": field.field_id,
                              "physical_type": str(field.field_type), "required": field.required})
         self.manifest = {
             "table": ".".join((table.catalog.name, *table.name())),
             "table_uuid": str(table.metadata.table_uuid),
             "snapshot_id": self.snapshot_id, "schema_id": schema.schema_id,
-            "fields": bindings, "dataset_id": contract["dataset_id"],
+            "fields": [field for field in bindings if field["column"] in self.fields],
+            "audit_fields": bindings, "dataset_id": contract["dataset_id"],
             "config_name": contract["config_name"],
         }
 
     def batches(self, batch_size: int):
+        yield from self._batches(self.scan, batch_size)
+
+    def audit_batches(self, batch_size: int):
+        yield from self._batches(self.audit_scan, batch_size)
+
+    def _batches(self, scan, batch_size: int):
         if batch_size < 1:
             raise ValueError("batch_size must be positive")
-        # Stable file order makes SGD replay independent of parallel scan scheduling.
-        # One file at a time retains Iceberg deletes and schema projection. PyIceberg
-        # may materialize one file internally; batch_size is not a hard memory limit.
-        projection = self.scan.projection()
+        from scripts.lamda.iceberg_reader import batches
+        projection = scan.projection()
         schema = schema_to_pyarrow(projection)
-        tasks = sorted(self.scan.plan_files(), key=lambda task: task.file.file_path)
-        for task in tasks:
-            reader = ArrowScan(self.scan.table_metadata, self.table.io, projection,
-                               self.scan.row_filter, self.scan.case_sensitive)
-            for batch in reader.to_record_batches([task]):
-                for offset in range(0, len(batch), batch_size):
-                    yield pa.Table.from_batches([batch.slice(offset, batch_size)]).cast(schema)
+        for batch in batches(self.table, scan, batch_size):
+            yield pa.Table.from_batches([batch]).cast(schema)
 
 
-def stage(source: IcebergInput, directory: Path, policy: SplitPolicy, batch_size: int) -> dict:
-    """Audit all APK identities before fitting; retain bounded sparse local shards."""
-    directory.mkdir()
-    counts = {split: [0, 0] for split in SPLITS}
-    files = {split: [] for split in SPLITS}
-    for split in SPLITS:
-        (directory / split).mkdir()
-    database = sqlite3.connect(directory / "identity.sqlite")
-    try:
-        database.execute("CREATE TABLE apk (hash TEXT PRIMARY KEY, split TEXT NOT NULL)")
-        for index, batch in enumerate(source.batches(batch_size)):
-            if not len(batch):
-                continue
-            meta = {name: batch[name].to_pylist() for name in METADATA}
-            identities, assigned = [], []
-            for row in range(len(batch)):
-                apk = meta["hash"][row]
-                if not isinstance(apk, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", apk):
-                    raise ValueError("Every row requires a non-null SHA256 APK hash")
-                apk = apk.lower()
-                if meta["label"][row] not in (0, 1):
-                    raise ValueError("label must be a non-null binary integer")
-                if (meta["config_name"][row] != source.contract["config_name"] or
-                        meta["dataset_id"][row] != source.contract["dataset_id"]):
-                    raise ValueError("Mixed dataset/configuration in selected source")
-                split = policy.assign(apk, meta["split_name"][row], meta["year_month"][row])
-                identities.append((apk, split))
-                assigned.append(split)
-            try:
-                database.executemany("INSERT INTO apk VALUES (?, ?)", identities)
-                database.commit()
-            except sqlite3.IntegrityError as exc:
-                raise ValueError("Repeated APK hash: resolve duplicate/overlapping samples before training") from exc
-            matrix = binary_matrix(batch, source.contract["columns"])
-            labels = np.asarray(meta["label"], dtype=np.int64)
-            assigned = np.asarray(assigned)
-            for split in SPLITS:
-                mask = assigned == split
-                if not mask.any():
-                    continue
-                stem = directory / split / f"{index:08d}"
-                sparse.save_npz(stem.with_suffix(".npz"), matrix[mask])
-                metadata = pa.table({
-                    "label": labels[mask],
-                    "hash": np.asarray([x[0] for x in identities])[mask],
-                    "year_month": np.asarray(meta["year_month"])[mask],
-                })
-                pq.write_table(metadata, stem.with_suffix(".parquet"))
-                counts[split] = (np.asarray(counts[split]) + np.bincount(labels[mask], minlength=2)).tolist()
-                files[split].append(str(stem.relative_to(directory)))
-            if index % 10 == 0:
-                print(f"Staged {sum(sum(c) for c in counts.values())} rows", flush=True)
-    finally:
-        database.close()
-    for split, classes in counts.items():
-        if min(classes) == 0:
-            raise ValueError(f"{split} must contain both classes; found benign/malware counts {classes}")
-    report = {"counts": counts, "shards": files, "split": policy.manifest(), "source": source.manifest}
-    write_json(directory / "manifest.json", report)
-    return report
+def stage(source: IcebergInput, directory: Path, policy: SplitPolicy, batch_size: int,
+          *, model="sgd", observations_root=None, publish_catalog=None) -> dict:
+    """Prepare shards during a complete audit; never release a failing cache to fit."""
+    from scripts.lamda.audit import AuditError, require_certified, run_audit
+    audit_directory = directory.parent / (directory.name + "_audit")
+    report = run_audit(source, audit_directory, policy=policy, batch_size=batch_size,
+                       stage_directory=directory, model=model, observations_root=observations_root,
+                       publish_catalog=publish_catalog)
+    if not report["certified"]:
+        raise AuditError(report, audit_directory)
+    require_certified(report, source, policy, model)
+    return json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
 
 
 def cached(directory: Path, stems: list[str]):

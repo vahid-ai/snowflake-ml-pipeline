@@ -35,3 +35,6 @@ bench/artifacts/
 # Local fitted state; keep the scaffold marker only.
 .feature-platform/state/*
 !.feature-platform/state/.gitkeep
+
+# Generated observed raw metadata is snapshot-specific and can be large.
+feature-platform/generated/raw_profiles/

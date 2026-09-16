@@ -49,7 +49,8 @@ def score(model: FittedModel, directory: Path, stems):
 
 def train(source: IcebergInput, output: Path, *, policy: SplitPolicy = SplitPolicy(),
           batch_size=4096, epochs=3, alphas=(0.0001, 0.001), model="sgd", model_options=None,
-          adapter: ModelAdapter | None = None, tracking: TrackingConfig | None = None):
+          adapter: ModelAdapter | None = None, tracking: TrackingConfig | None = None,
+          observations_root=None, publish_catalog=None):
     """Every adapter uses the same split audit, MLflow lifecycle and held-out evaluation.
 
     Supply an adapter to extend the pipeline without editing orchestration, or choose
@@ -87,7 +88,14 @@ def train(source: IcebergInput, output: Path, *, policy: SplitPolicy = SplitPoli
                 write_json(output / name, value)
                 parent.artifact(output / name)
             directory = output / "cache"
-            data = stage(source, directory, policy, batch_size)
+            try:
+                data = stage(source, directory, policy, batch_size, model=adapter.name,
+                             observations_root=observations_root, publish_catalog=publish_catalog)
+            finally:
+                for name in ("report.json", "report.html", "diagnostics.txt"):
+                    path = output / "cache_audit" / name
+                    if path.exists():
+                        parent.artifact(path, "audit")
             parent.artifact(directory / "manifest.json", "data_manifest")
             parent.metrics({"data": {split: {"benign": count[0], "malware": count[1]}
                                      for split, count in data["counts"].items()}})
@@ -191,7 +199,16 @@ def predict(artifact, batch):
     for name in ("config_name", "dataset_id"):
         if name not in batch.schema.names or any(v != contract[name] for v in batch[name].to_pylist()):
             raise ValueError(f"Inference requires matching {name} on every row")
-    matrix = binary_matrix(batch, contract["columns"])
+    if "definitions" in contract:
+        from scripts.lamda.audit import Issues
+        from scripts.lamda.contracts import Plan
+        issues = Issues()
+        matrix = Plan(contract).execute(batch, issues, model=artifact.get("model_type"))
+        if matrix is None or issues.error_count:
+            raise ValueError("Inference input audit failed: " + "; ".join(
+                f"{i['code']} {i['feature']}: {i['message']}" for i in issues.records()[:10]))
+    else:
+        matrix = binary_matrix(batch, contract["columns"])
     kind = artifact.get("score_kind", "probability")
     if version == 1:
         scores = artifact["model"].predict_proba(matrix)[:, 1]

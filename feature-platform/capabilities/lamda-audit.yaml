@@ -1,0 +1,17 @@
+spec_version: '1.0'
+backends:
+  lamda_arrow_audit_v1:
+    type_mappings:
+      int64: Checked Arrow signed integers; source int32 widening is exact. Reject overflow and lossy integer-to-float32 model conversion.
+      float32: IEEE float32 scalar values in CSR, then identical dense Lightning minibatches.
+      float64: Explicit float32 model representation rounds to IEEE float32; reject nonfinite values and overflow.
+    null_policy: Raw observations preserve null counts. Required contracts reject nulls unless an explicit fill_null node or constant missing policy accounts for them.
+    operations:
+      positive_presence: Arrow comparison greater than zero, then checked integer cast; source contract requires nonnegative integer counts.
+      identity: Checked cast to declared output type.
+      cast: Checked Arrow cast to declared output type.
+      fill_null: Explicit constant in canonical transform parameters; validate result afterward.
+      clip: Inclusive declared min and max; preserve nulls and validate result afterward.
+      log1p_nonnegative: Reject negatives, compute log1p, cast to declared output type.
+    unsupported: Fitted transforms, multivariate transforms, categorical encoders, and vector outputs require another executable adapter and fail before fitting.
+    equivalence: Exact binary/presence values and order across Arrow, SciPy CSR, and Lightning float32 minibatches. Continuous float32 log1p comparison uses rtol 1e-6.

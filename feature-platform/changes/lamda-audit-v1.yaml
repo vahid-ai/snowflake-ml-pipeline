@@ -1,0 +1,34 @@
+spec_version: '1.0'
+changes:
+- id: lamda.preflight
+  version: 1
+  status: verified
+  change_type: additive_semantic
+  intent: Audit raw observations, explicit engineered features and final model inputs before every fit; expose the same audit standalone.
+  compatibility: backward_compatible
+  affected_features: []
+  proposed_feature_sets: [lamda.malware_baseline@1, lamda.malware_presence@1]
+  affected_consumers: [scripts/train_lamda_malware.py, scripts/predict_lamda_malware.py, scripts/audit_lamda.py]
+  source_impact: Preserve source rows and schema. Append completed field observations to a separate Iceberg table and generate snapshot-versioned raw-profile YAML.
+  availability: No new time joins. APK collection month is not a claim of historical availability.
+  representation: Ordered scalar numeric DAG to CSR float32; opt-in positive_presence is exactly 1 for positive nonnegative integer counts and 0 for zero. Nulls and negatives remain errors.
+  fitted_state: These transforms are deterministic and stateless. Unsupported fitted transforms fail compilation. No EDA statistics fit or change a transform.
+  backend_impact: Shared Arrow operations, SciPy CSR, and Lightning minibatches. Validate model-specific BCE input domain before fitting an autoencoder.
+  migration:
+    strategy: Additive raw-count and derived-presence IDs. Preserve all existing binary feature IDs and the default feature set; no automatic recoding or source backfill.
+  verification:
+    required: [contract, dag, leakage, portability, golden_differential, backward_compatibility]
+    evidence:
+      baseline: featurectl doctor and validate passed before edits.
+      canonical_validation: featurectl doctor and validate passed after canonical changes; original baseline feature IDs and values were preserved.
+      tests: 68 repository tests passed. Additional targeted reader and contract checks passed. Tests include binary 2/3/4/5, handled/unhandled nulls, categories, bounds, overflow, precision loss, DAG/layout errors, duplicate and overlapping splits, interrupted scans, samples, immutable metadata publication, and MLflow failure gates.
+      architecture_review: Raw observations are generated separately from required contracts. Additive raw-count and presence nodes preserve old identities. Model artifacts freeze definitions and ordered lineage. Publication appends a companion table rather than replacing descriptive metadata.
+      leakage_review: Profiles never fit transformations. Label, identity and split columns cannot enter the model DAG. Existing training-only model fitting, validation selection and held-out test boundaries remain enforced. Failed audits create no candidate runs.
+      portability_review: Arrow-to-CSR and Lightning input equivalence checked with golden presence values. All three model adapters train and serve the same explicit transform. Reader tests retain row filters, positional deletes, old snapshot schemas and renamed-field identity. PyIceberg helper version pinned to 0.11.1.
+      live_strict_audit: Complete scan of snapshot 7499953728686860711 found six nonbinary values across feat_2177, feat_2247, feat_2263, feat_2379 and feat_2380. Exactly two violations are in feat_2247. Full audit failed as required and still published accurate raw observations.
+      live_presence_pipeline: All 1008381 Baseline rows passed raw-count, engineered-presence and tensor validation. One CPU Lightning MLP epoch with hidden widths 64/16 completed; 201681 test rows yielded average precision 0.9812158149632492 and F1 0.9379221044740519.
+      live_tracking: MLflow parent 520cca0893184e528e15ed8d2b992501 and its candidate finished; audit artifacts, epoch metrics, saved model digest, 32 reloaded scores and both actual raw-two rows verified. One raw-two test prediction matched its saved score.
+      live_metadata: Read back 4572 records (4571 field profiles plus atomic completion record) from raw_lamda.lamda_feature_observations. Generated raw YAML preserves history. Source samples snapshot unchanged.
+      runtime_observations: Initial standard ArrowScan process exited natively; bounded compressed-file spooling and batch decoding were added. An incomplete scan with a TypeError withheld certification/publication; isolated-file and subsequent complete scans passed. Sanitized stack frames now accompany scan failures. Runtime resource or connector failures cannot be ruled out by data-contract validation.
+  approval:
+    required: false

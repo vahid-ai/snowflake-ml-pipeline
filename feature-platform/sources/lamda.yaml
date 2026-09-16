@@ -5,7 +5,11 @@ sources:
     iceberg: lamda_r2.raw_lamda.lamda_samples
   dataset_id: IQSeC-Lab/LAMDA
   config_name: Baseline
-  schema_status: required_contract_live_verification_pending
+  schema_status: required_contract_with_separate_snapshot_observations
+  observations:
+    yaml_root: feature-platform/generated/raw_profiles
+    iceberg_table: lamda_r2.raw_lamda.lamda_feature_observations
+    authority: Completed snapshot profiles describe actual data; these columns remain required logical contracts.
   time_semantics: Static APK features. year_month is collection month, not feature
     availability. No time joins or windows.
   columns:

@@ -22,6 +22,7 @@ dependencies = [
 #   uv sync --extra duckdb
 duckdb = ["duckdb>=1.2.2"]
 # Sparse malware training and inference; ingestion does not need these.
-ml = ["scikit-learn>=1.6,<1.9", "scipy>=1.13", "numpy>=1.26", "joblib>=1.4", "pyyaml>=6.0", "mlflow>=3.1,<4"]
+# The bounded reader uses Iceberg schema/delete helpers covered against this version.
+ml = ["scikit-learn>=1.6,<1.9", "scipy>=1.13", "numpy>=1.26", "joblib>=1.4", "pyyaml>=6.0", "mlflow>=3.1,<4", "pyiceberg==0.11.1"]
 # Add --extra lightning for the feedforward and autoencoder model adapters.
 lightning = ["torch>=2.5,<3", "lightning>=2.5,<3"]
