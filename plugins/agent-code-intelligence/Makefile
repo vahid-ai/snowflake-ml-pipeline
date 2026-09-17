@@ -1,5 +1,6 @@
 .PHONY: test doctor profiles zip
 
+# Run package checks, inspect available tools, preview MCP configuration, or bundle a release.
 test:
 	python3 -m unittest discover -s tests -v
 

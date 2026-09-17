@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 NAMES = {"ml-feature-governance", "agent-code-intelligence"}
 
 
+# Verify plugin discovery, client activation, managed-file identity, and validation from the
+# repository root.
 class RepositoryPluginTests(unittest.TestCase):
     def test_marketplaces_resolve_both_plugins_from_repository_root(self):
         for catalog_path, manifest_dir in (
@@ -41,6 +43,8 @@ class RepositoryPluginTests(unittest.TestCase):
             ".cursor/rules/ml-feature-governance.mdc": "templates/client/cursor/feature-governance.mdc",
         }
         for target, source in sources.items():
+            # Compare exact bytes because bootstrap uses these hashes to distinguish managed
+            # files from local modifications.
             data = (ROOT / target).read_bytes()
             self.assertEqual(data, (ROOT / "plugins/ml-feature-governance" / source).read_bytes())
             self.assertEqual(hashlib.sha256(data).hexdigest(), lock["managed_files"][target])

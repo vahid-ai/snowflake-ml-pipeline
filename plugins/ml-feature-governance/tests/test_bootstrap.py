@@ -16,6 +16,8 @@ bootstrap = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bootstrap)
 
 
+# Check repeatable initialization while preserving user-owned files, instructions, and edited
+# managed content.
 class BootstrapTests(unittest.TestCase):
     def test_copy_missing_preserves_existing_files(self) -> None:
         with tempfile.TemporaryDirectory() as td:

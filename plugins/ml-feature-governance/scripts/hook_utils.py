@@ -12,6 +12,7 @@ from typing import Any
 PATCH_PATH = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.MULTILINE)
 
 
+# Treat missing, malformed, or non-object hook input as an empty event.
 def read_payload() -> dict[str, Any]:
     try:
         payload = json.load(sys.stdin)
@@ -20,6 +21,8 @@ def read_payload() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+# Resolve workspace context from the event first, then supported host variables, then the
+# process directory.
 def project_root(payload: dict[str, Any]) -> Path:
     cwd = payload.get("cwd")
     if isinstance(cwd, str) and cwd:
@@ -67,6 +70,7 @@ def edited_paths(payload: dict[str, Any], project: Path) -> list[Path]:
     return paths
 
 
+# Check ancestry on resolved paths rather than using an unsafe string-prefix comparison.
 def inside(child: Path, parent: Path) -> bool:
     try:
         child.relative_to(parent)

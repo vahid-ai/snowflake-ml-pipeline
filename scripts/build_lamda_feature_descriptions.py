@@ -744,6 +744,8 @@ PERMISSION_KEYWORD_RULES: list[tuple[re.Pattern[str], str, str]] = [
 ]
 
 
+# Combine curated permission meaning with keyword fallbacks, distinguishing requested from
+# exercised capabilities.
 def describe_permission(perm: str, used: bool) -> tuple[str, str]:
     suffix = perm.rsplit(".", 1)[-1].strip()
     kb = PERMISSION_KB.get(suffix.upper())
@@ -1315,6 +1317,8 @@ DYNDNS = ("no-ip", "dyndns", "duckdns", "3322.org", "8866.org", "changeip", "vic
 IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}(:\d+)?$")
 
 
+# Classify static address tokens by known infrastructure patterns; descriptions do not probe
+# live endpoints.
 def describe_url(item: str) -> tuple[str, str]:
     lower = item.lower()
     base = (
@@ -1465,6 +1469,8 @@ COMPONENT_KIND = {
 }
 
 
+# Explain manifest component roles using SDK prefixes, keyword matches, and app-relative class
+# names.
 def describe_component(category: str, item: str) -> tuple[str, str]:
     kind, tag = COMPONENT_KIND[category]
     relative = item.startswith(".")
@@ -1539,6 +1545,7 @@ HW_KEYWORDS: list[tuple[re.Pattern[str], str, str]] = [
 ]
 
 
+# Map declared hardware/software capabilities to curated descriptions with a generic fallback.
 def describe_hardware(item: str) -> tuple[str, str]:
     for pattern, what, signal in HW_KEYWORDS:
         if pattern.search(item):
@@ -1555,6 +1562,7 @@ def describe_hardware(item: str) -> tuple[str, str]:
     )
 
 
+# Describe known platform intents, custom actions, and empty-token parsing artifacts.
 def describe_intent(item: str) -> tuple[str, str]:
     if item == "":
         return (
@@ -1588,6 +1596,7 @@ def describe_intent(item: str) -> tuple[str, str]:
     )
 
 
+# Combine permission-protected API class meaning with more specific method-level descriptions.
 def describe_restricted_api(item: str) -> tuple[str, str]:
     cls, _, method = item.rpartition(".")
     kb = API_CLASS_KB.get(cls)
@@ -1617,6 +1626,7 @@ def describe_restricted_api(item: str) -> tuple[str, str]:
     return base, signal
 
 
+# Normalize bytecode-style names and recognize special tokens before applying API descriptions.
 def describe_suspicious_api(item: str) -> tuple[str, str]:
     if item == "system/bin/su":
         return (
@@ -1665,6 +1675,7 @@ def describe_suspicious_api(item: str) -> tuple[str, str]:
     return base, signal
 
 
+# Dispatch each upstream feature category to its matching description strategy.
 def describe_token(category: str, item: str) -> tuple[str, str]:
     if category in ("RequestedPermissionList", "UsedPermissionsList"):
         # Requested list also contains <uses-feature>-style strings some manifests
@@ -1771,6 +1782,8 @@ def load_mapping(config: str, data_dir: Path | None) -> dict[str, str]:
         return {row["feature_name"]: row["mapped_name"] for row in csv.DictReader(fh)}
 
 
+# Join configuration-specific feature IDs by token and emit descriptions in Baseline feature
+# order.
 def build(data_dir: Path | None = None) -> dict:
     mappings = {config: load_mapping(config, data_dir) for config in CONFIGS}
     baseline = mappings["Baseline"]
@@ -1829,6 +1842,7 @@ def build(data_dir: Path | None = None) -> dict:
     }
 
 
+# Build the dictionary from local or downloaded mappings and write its JSON artifact.
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)

@@ -28,6 +28,8 @@ from scripts.load_lamda_local_iceberg import open_local_catalog
 from tests.test_lamda_ml import fixture
 
 
+# Create a minimal versioned binary feature contract with source locations for diagnostic
+# assertions.
 def contract(n=3):
     definitions = {}
     for i in range(n):
@@ -40,6 +42,7 @@ def contract(n=3):
             "dataset_id": "IQSeC-Lab/LAMDA", "config_name": "Baseline"}
 
 
+# Derive a one-input transform contract without mutating the underlying raw feature definition.
 def transformed(op, *, logical="int64", params=None, raw_nullable=False):
     value = contract(1)
     raw = value["definitions"]["test.f0@1"]
@@ -57,6 +60,8 @@ def transformed(op, *, logical="int64", params=None, raw_nullable=False):
     return value
 
 
+# Mimic snapshot and schema interfaces so contract failures can be isolated from connector
+# behavior.
 class MemorySource:
     def __init__(self, data=None, definition=None):
         self.data, self.contract = data if data is not None else fixture(), definition or contract()
@@ -75,17 +80,23 @@ class MemorySource:
                          "fields": [{"column": name, "field_id": i+1, "physical_type": str(f.field_type),
                                      "required": f.required} for i, (name, f) in enumerate(self.fields.items())]}
 
+    # Yield deterministic slices to exercise bounded scans and late-occurring violations.
     def audit_batches(self, batch_size):
         for offset in range(0, len(self.data), batch_size):
             yield self.data.slice(offset, batch_size)
 
 
+# Substitute one Arrow column while preserving the surrounding fixture schema and row data.
 def replace(data, name, values, dtype=None):
     array = pa.array(values, type=dtype)
     return data.set_column(data.schema.get_field_index(name), name, array)
 
 
+# Verify feature operations, domain checks, type conversions, lineage, and final tensor
+# requirements.
 class ContractTests(unittest.TestCase):
+    # Run a feature plan and return both the candidate matrix and aggregated issues for
+    # assertions.
     def execute(self, definition, values, dtype=None, model="sgd"):
         issues = Issues()
         matrix = Plan(definition).execute(pa.table({"feat_0": pa.array(values, type=dtype)}), issues, model=model)
@@ -238,6 +249,8 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(len([i for i in issues.records() if i["code"] == "MODEL_DOMAIN"]), 3)
 
 
+# Test certification, publication, storage semantics, and the boundary that prevents invalid
+# data reaching fitting.
 class AuditTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -247,6 +260,8 @@ class AuditTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    # Give each audit an isolated output path while suppressing expected diagnostic console
+    # output.
     def run_audit(self, source=None, **kwargs):
         self.serial += 1
         directory = self.root / str(self.serial)

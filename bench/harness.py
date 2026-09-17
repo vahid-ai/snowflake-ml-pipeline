@@ -1,3 +1,5 @@
+# Shared measurement harness for ingestion benchmarks; scenarios supply the workload and
+# counters.
 from __future__ import annotations
 
 import json
@@ -16,6 +18,7 @@ from pyinstrument import Profiler
 from pyinstrument.renderers.html import HTMLRenderer
 
 
+# Record wall and CPU time for one named stage, with scenario-specific context.
 @dataclass
 class StageMetric:
     name: str
@@ -24,6 +27,8 @@ class StageMetric:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+# Collect timings, memory peaks, counters, artifacts, and environment details for one scenario
+# run.
 @dataclass
 class BenchmarkMetric:
     scenario: str
@@ -42,7 +47,9 @@ class BenchmarkMetric:
     error: str | None = None
 
 
+# Sample process resident memory in a background thread, including allocations outside Python.
 class MemorySampler:
+    # Capture the baseline and prepare a stopped sampler with a bounded polling interval.
     def __init__(self, interval_seconds: float = 0.05) -> None:
         self.interval_seconds = interval_seconds
         self.process = psutil.Process()
@@ -52,16 +59,20 @@ class MemorySampler:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._sample, daemon=True)
 
+    # Begin RSS sampling just before the measured scenario executes.
     def __enter__(self) -> MemorySampler:
         self._thread.start()
         return self
 
+    # Stop the worker and include final resident memory in the observed peak.
     def __exit__(self, *_: object) -> None:
         self._stop.set()
         self._thread.join(timeout=1)
         self.end_rss = self.process.memory_info().rss
         self.peak_rss = max(self.peak_rss, self.end_rss)
 
+    # Poll until cancellation, stopping gracefully if process memory information becomes
+    # unavailable.
     def _sample(self) -> None:
         while not self._stop.is_set():
             try:
@@ -71,7 +82,9 @@ class MemorySampler:
             self._stop.wait(self.interval_seconds)
 
 
+# Give scenario implementations a common way to record stage timings and result artifacts.
 class BenchmarkContext:
+    # Keep all measurements scoped to a scenario and its output directory.
     def __init__(self, scenario: str, artifact_dir: Path, run_id: str) -> None:
         self.scenario = scenario
         self.artifact_dir = artifact_dir
@@ -80,6 +93,7 @@ class BenchmarkContext:
         self.counters: dict[str, Any] = {}
         self.artifacts: dict[str, str] = {}
 
+    # Record elapsed and CPU time even when the measured stage raises an exception.
     @contextmanager
     def stage(self, name: str, **metadata: Any):
         wall_start = time.perf_counter()
@@ -96,9 +110,11 @@ class BenchmarkContext:
                 )
             )
 
+    # Store a scenario-defined measurement such as loaded rows or destination bytes.
     def set_counter(self, name: str, value: Any) -> None:
         self.counters[name] = value
 
+    # Register generated outputs so the final summary can point to them.
     def add_artifact(self, name: str, path: Path) -> None:
         self.artifacts[name] = str(path)
 
@@ -106,6 +122,8 @@ class BenchmarkContext:
 ScenarioFn = Callable[[BenchmarkContext, dict[str, Any]], None]
 
 
+# Measure a scenario with RSS sampling, Python allocation tracing, and optional flamegraph
+# profiling.
 def run_scenario(
     name: str,
     scenario_fn: ScenarioFn,
@@ -186,6 +204,7 @@ def run_scenario(
     return metric
 
 
+# Serialize successful scenario results into a single comparison file.
 def write_summary(metrics: list[BenchmarkMetric], artifact_root: Path) -> Path:
     summary_path = artifact_root / "summary.json"
     summary_path.parent.mkdir(parents=True, exist_ok=True)

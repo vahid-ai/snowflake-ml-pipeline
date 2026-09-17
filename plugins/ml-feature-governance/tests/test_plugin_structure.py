@@ -10,6 +10,8 @@ import yaml
 PLUGIN = Path(__file__).resolve().parents[1]
 
 
+# Extract structured metadata so skill and agent discovery can be checked independently of their
+# prose.
 def frontmatter(path: Path) -> dict[str, object]:
     text = path.read_text(encoding="utf-8")
     if not text.startswith("---\n"):
@@ -21,6 +23,8 @@ def frontmatter(path: Path) -> dict[str, object]:
     return data
 
 
+# Verify the package is discoverable across supported clients and its helper scripts remain
+# syntactically valid.
 class PluginStructureTests(unittest.TestCase):
     def test_all_client_manifests_are_valid_json(self) -> None:
         manifests = {

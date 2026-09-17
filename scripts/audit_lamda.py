@@ -16,6 +16,8 @@ from scripts.lamda.tracking import TrackingConfig, TrackingSession
 from scripts.load_lamda_r2_iceberg import r2_catalog_config
 
 
+# Resolve the selected catalog, frozen snapshot, feature contract, and split policy before
+# running the preflight audit.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--table", default="raw_lamda.lamda_samples")

@@ -13,6 +13,8 @@ from pyiceberg.expressions import EqualTo
 from scripts.lamda.contracts import fingerprint
 
 
+# Build descriptive metadata only from a completed nonempty scan; required feature contracts
+# remain separate.
 def observation(report):
     if not report["complete_scan"] or not report["rows"]:
         raise ValueError("Only completed, nonempty full scans can update observations")
@@ -21,6 +23,8 @@ def observation(report):
             "contract_sha256": report["contract_sha256"], "profiles": report["profiles"]}
 
 
+# Persist immutable per-audit history and atomically replace the latest profile under an
+# exclusive lock.
 def publish_local(report, root: Path):
     value = observation(report)
     selection = {k: report["source"][k] for k in ("table_uuid", "dataset_id", "config_name")}
@@ -60,6 +64,8 @@ def publish_local(report, root: Path):
         lock.unlink()
 
 
+# Append field profiles and a completion record together, then verify the immutable audit by
+# readback.
 def publish_iceberg(report, catalog, identifier="raw_lamda.lamda_feature_observations"):
     value = observation(report)
     digest = fingerprint(value)

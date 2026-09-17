@@ -35,6 +35,8 @@ def discover(root: Path, include_tests: bool = False) -> list[str]:
     )
 
 
+# Convert tracked source paths into module labels, collapsing package __init__ files to their
+# package name.
 def module_name(path: str) -> str:
     parts = list(Path(path).with_suffix("").parts)
     if parts[-1] == "__init__":
@@ -48,7 +50,10 @@ def lsp_column(line: str, byte_offset: int) -> int:
     return len(prefix.encode("utf-16-le")) // 2
 
 
+# Collect syntax-level ownership, imports, bindings, and call positions without executing
+# repository code.
 class Source(ast.NodeVisitor):
+    # Read the declared source encoding and build one AST inventory for the module.
     def __init__(self, root: Path, path: str):
         self.path = path
         self.module = module_name(path)
@@ -64,6 +69,8 @@ class Source(ast.NodeVisitor):
         self.owner = path
         self.visit(self.tree)
 
+    # Record symbol identity and traverse definition-time expressions separately from deferred
+    # function bodies.
     def definition(self, node):
         name = ".".join([*self.scope, node.name])
         identity = f"{self.path}:{node.lineno}:{name}"
@@ -99,6 +106,8 @@ class Source(ast.NodeVisitor):
         self.owner = old_owner
         self.visit(node.args)
 
+    # Locate the called name or attribute for LSP lookup, including multiline and Unicode
+    # expressions.
     def visit_Call(self, node):
         func = node.func
         if isinstance(func, ast.Name):
@@ -114,6 +123,7 @@ class Source(ast.NodeVisitor):
                                queryable=isinstance(func, (ast.Name, ast.Attribute))))
         self.generic_visit(node)
 
+    # Retain import syntax and enclosing ownership for dependency and re-export analysis.
     def visit_Import(self, node):
         self.imports.append((node, self.owner))
         if not self.scope:
@@ -122,11 +132,15 @@ class Source(ast.NodeVisitor):
 
     visit_ImportFrom = visit_Import
 
+    # Collect module-scope assignments as potential implicit public bindings.
     def visit_Name(self, node):
         if isinstance(node.ctx, ast.Store) and not self.scope:
             self.bindings.setdefault(node.id, "")
 
+    # Honor a literal __all__, flag computed exports, or infer public names from module
+    # bindings.
     def exports(self) -> tuple[list[str], str]:
+        # Exclude nested function/class bodies when inspecting module export declarations.
         def module_nodes(node):
             yield node
             if not isinstance(node, (*CALLABLES, ast.Lambda)):
@@ -155,6 +169,8 @@ class Source(ast.NodeVisitor):
         return sorted(name for name in self.bindings if not name.startswith("_")), "public bindings (implicit)"
 
 
+# Start the pinned Jedi backend through Serena with local cache paths and bounded request
+# timeouts.
 @contextmanager
 def serena_server(root: Path, cache: Path):
     from solidlsp.ls import SolidLanguageServer
@@ -174,6 +190,8 @@ def serena_server(root: Path, cache: Path):
         yield server
 
 
+# Combine syntax-derived dependencies with callable definitions resolved by the real language
+# server.
 def build_graph(root: Path, paths: list[str], server) -> dict:
     sources = {path: Source(root, path) for path in sorted(paths)}
     modules = {source.module: path for path, source in sources.items()}
@@ -187,9 +205,11 @@ def build_graph(root: Path, paths: list[str], server) -> dict:
                 definitions[(source.path, symbol["line"])] = symbol["id"]
     edges, unresolved, exports = [], [], []
 
+    # Store typed relationships with source evidence before deterministic sorting.
     def edge(source, target, kind, **extra):
         edges.append(dict(source=source, target=target, kind=kind, **extra))
 
+    # Match analyzed modules or sibling scripts; preserve unmatched names as dependency nodes.
     def import_target(name, path):
         if name in modules:
             return modules[name]
@@ -252,10 +272,12 @@ def build_graph(root: Path, paths: list[str], server) -> dict:
                 exports=exports, unresolved=unresolved)
 
 
+# Give Mermaid and Graphviz stable, syntax-safe identifiers independent of display labels.
 def node_id(value: str) -> str:
     return "n" + hashlib.sha256(value.encode()).hexdigest()[:16]
 
 
+# Render the same deduplicated relationships to Mermaid and DOT, escaping source-derived labels.
 def diagram(nodes: dict, edges: list[tuple[str, str, str]]) -> tuple[str, str]:
     mermaid, dot = ["flowchart LR"], ["digraph code {", '  rankdir=LR;', '  node [shape=box, fontname="Arial"];']
     for identity, label in sorted(nodes.items()):
@@ -270,6 +292,7 @@ def diagram(nodes: dict, edges: list[tuple[str, str, str]]) -> tuple[str, str]:
     return "\n".join(mermaid) + "\n", "\n".join(dot) + "\n"
 
 
+# Write the complete JSON graph plus overview, dependency, export, and per-module call views.
 def write_outputs(graph: dict, output: Path):
     output.mkdir(parents=True, exist_ok=True)
     (output / "graph.json").write_text(json.dumps(graph, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -290,6 +313,7 @@ def write_outputs(graph: dict, output: Path):
         elif kind == "exports":
             export_edges.append((source, target, kind))
 
+    # Qualify symbol labels with file paths to distinguish identical names in separate modules.
     def labels(edges):
         ids = {identity for source, target, _ in edges for identity in (source, target)}
         return {i: (f'{nodes[i]["path"]} :: {nodes[i]["name"]}' if nodes[i]["kind"] not in {"module", "dependency"}
@@ -322,6 +346,8 @@ def write_outputs(graph: dict, output: Path):
     (output / "README.md").write_text("\n".join(report) + "\n", encoding="utf-8")
 
 
+# Inventory tracked sources, run Serena analysis, and write artifacts only after analysis
+# succeeds.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])

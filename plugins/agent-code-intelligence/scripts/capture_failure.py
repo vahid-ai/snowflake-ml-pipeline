@@ -45,6 +45,8 @@ secret_patterns = [
 ]
 
 
+# Recursively redact secret-shaped keys and embedded text before failed tool events reach local
+# storage.
 def sanitize(value):
     if isinstance(value, dict):
         return {
@@ -75,6 +77,8 @@ def sanitize(value):
         value = pattern.sub(replacement, value)
     return value
 
+# Convert a sanitized value to bounded display text after complete secret values have been
+# removed.
 def redact(s):
     value = sanitize(s)
     if isinstance(value, (dict, list)):
@@ -83,6 +87,7 @@ def redact(s):
     return str(value or "")[:6000]
 
 inp = event.get("tool_input") or {}
+# Persist only the selected redacted fields as an unverified lead for later review.
 record = {
     "ts": datetime.now(timezone.utc).isoformat(),
     "session_id": redact(event.get("session_id", ""))[:200],

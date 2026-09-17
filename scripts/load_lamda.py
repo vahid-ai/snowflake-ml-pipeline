@@ -28,6 +28,8 @@ PIPELINE_NAME = "lamda_huggingface"
 SOURCE_COLUMNS = ("dataset_id", "config_name", "split_name", "row_number", "source_file")
 
 
+# Discover Hub Parquet shards and retain dataset, configuration, split, and source-file
+# provenance.
 def parquet_manifest() -> list[dict]:
     configs = set(get_dataset_config_names(DATASET_ID))
     files = []
@@ -62,6 +64,7 @@ def parquet_manifest() -> list[dict]:
     return sorted(files, key=lambda row: (row["config_name"], row["repo_path"]))
 
 
+# Publish the source-shard inventory as a companion table for ingestion lineage.
 @dlt.resource(name="lamda_files", write_disposition="replace")
 def lamda_files(files: list[dict] | None = None) -> Iterator[dict]:
     yield from files if files is not None else parquet_manifest()
@@ -112,6 +115,7 @@ def _stream_remote_parquet(
             yield table
 
 
+# Stream each selected remote shard as Arrow batches, preserving source row offsets.
 @dlt.resource(name="lamda_samples", write_disposition="replace")
 def lamda_samples(
     files: list[dict] | None = None,
@@ -156,10 +160,12 @@ def snowflake_credentials() -> dict[str, Any] | None:
     return credentials or None
 
 
+# Pass explicit environment credentials to dlt while retaining its normal fallback providers.
 def snowflake_destination(**kwargs: Any):
     return dlt_snowflake(credentials=snowflake_credentials(), **kwargs)
 
 
+# Bind the reusable Snowflake destination to the selected pipeline and schema names.
 def build_pipeline(
     dataset_name: str = DEFAULT_DATASET_NAME,
     pipeline_name: str = PIPELINE_NAME,
@@ -171,6 +177,7 @@ def build_pipeline(
     )
 
 
+# Load the shard manifest and samples in one dlt run, then report normalized sample counts.
 def run_pipeline(
     dataset_name: str = DEFAULT_DATASET_NAME,
     limit_per_file: int | None = None,
@@ -205,6 +212,7 @@ def run_pipeline(
     )
 
 
+# Translate CLI sampling and batching options into a Snowflake ingestion run.
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(

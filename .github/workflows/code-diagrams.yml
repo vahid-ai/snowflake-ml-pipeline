@@ -7,9 +7,11 @@ on:
     branches: [main]
 
 permissions:
+  # Analyze the checkout and upload artifacts without granting repository write access.
   contents: read
 
 concurrency:
+  # Replace obsolete analyses when another commit arrives on the same branch or PR.
   group: code-diagrams-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -29,12 +31,14 @@ jobs:
       - name: Install Serena and the Python language server
         run: python -m pip install -r scripts/code-diagrams-requirements.txt
       - name: Test graph extraction, including real LSP resolution
+        # A real cross-file fixture catches incompatibilities in the pinned Serena/Jedi APIs.
         env:
           CODE_DIAGRAMS_LSP_TEST: '1'
         run: python -m unittest discover -s tests -p test_code_diagrams.py -v
       - name: Generate code diagrams
         run: python scripts/generate_code_diagrams.py
       - name: Render standalone SVG diagrams
+        # Produce images that can be viewed offline without a Mermaid-capable Markdown viewer.
         run: |
           sudo apt-get update
           sudo apt-get install --yes graphviz
@@ -42,6 +46,7 @@ jobs:
             dot -Tsvg "$graph" -o "${graph%.dot}.svg"
           done
       - name: Add run summary
+        # Link to the downloadable bundle; individual module graphs remain in the artifact index.
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -61,6 +66,7 @@ jobs:
                             'export and call diagrams, per-module call graphs, and `graph.json`.\n')
           PY
       - name: Upload code diagrams
+        # Keep generated output separate from source commits and expire old run artifacts.
         uses: actions/upload-artifact@v4
         with:
           name: code-diagrams

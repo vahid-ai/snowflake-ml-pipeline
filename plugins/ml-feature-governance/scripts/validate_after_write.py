@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Post-write hook: surface canonical feature-contract violations immediately after an edit.
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +9,8 @@ from hook_utils import edited_paths, project_root, read_payload
 payload = read_payload()
 project = project_root(payload)
 
+# Validate only canonical structured definitions; generated artifacts and unrelated edits do not
+# trigger this hook.
 canonical_edit = False
 for path in edited_paths(payload, project):
     try:
@@ -25,6 +28,7 @@ for path in edited_paths(payload, project):
 if not canonical_edit:
     sys.exit(0)
 
+# Use the validator packaged beside the hook and relay failures to the editing client.
 validator = Path(__file__).with_name("featurectl.py")
 proc = subprocess.run(
     [sys.executable, str(validator), "validate", "--project-dir", str(project)],

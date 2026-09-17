@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Resolve the installed plugin relative to this wrapper, preserving all caller arguments.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 exec python3 "$ROOT/scripts/tool_doctor.py" "$@"

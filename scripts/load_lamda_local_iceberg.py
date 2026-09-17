@@ -43,6 +43,7 @@ def local_catalog_config(local_root: Path) -> dict[str, str]:
     }
 
 
+# Reopen the local SQLite catalog using the same absolute storage paths as the writer.
 def open_local_catalog(local_root: Path = DEFAULT_LOCAL_ROOT) -> Catalog:
     return load_catalog(CATALOG_NAME, **local_catalog_config(local_root))
 
@@ -93,6 +94,7 @@ def snapshot_chunks(
     )
     schema = schema_to_pyarrow(scan.projection())
 
+    # Read planned files one at a time with the pinned projection, stopping at the sample limit.
     def read_files() -> Iterator[pa.RecordBatch]:
         # PyIceberg 0.11's batch reader eagerly submits every file to an
         # executor and materializes each file's batches. Passing one planned
@@ -195,6 +197,8 @@ def run_pipeline(
                 rows += chunk.num_rows
                 print(f"{name}: {rows} rows loaded", flush=True)
             target = local.load_table((dataset_name, name))
+            # Verify committed destination rows before adding the table to the completed refresh
+            # report.
             actual_rows = target.scan().count()
             if actual_rows != rows:
                 raise RuntimeError(f"Row count mismatch for {name}: extracted {rows}, local {actual_rows}")
@@ -214,6 +218,7 @@ def run_pipeline(
     return report
 
 
+# Reject zero and negative row limits at argument parsing time.
 def positive_int(value: str) -> int:
     number = int(value)
     if number < 1:
@@ -221,6 +226,7 @@ def positive_int(value: str) -> int:
     return number
 
 
+# Translate CLI table-selection and batch limits into a local Iceberg refresh.
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--local-root", type=Path, default=DEFAULT_LOCAL_ROOT,

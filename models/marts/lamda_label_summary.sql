@@ -1,3 +1,5 @@
+-- Summarize class/family distribution separately for each source configuration and split.
+-- vt_count is reported for analysis; this model does not select training inputs.
 select
     config_name,
     split_name,

@@ -24,6 +24,8 @@ from pyiceberg.schema import prune_columns
 from pyiceberg.types import ListType, MapType
 
 
+# Yield bounded batches while preserving Iceberg snapshot schema, partition values, filters, and
+# positional deletes.
 def batches(table, scan, batch_size):
     metadata = scan.table_metadata
     snapshot = scan.snapshot()
@@ -64,6 +66,8 @@ def batches(table, scan, batch_size):
                     end = offset + len(batch)
                     if deletes:
                         batch = batch.take(_combine_positional_deletes(deletes, offset, end))
+                    # Advance by physical file rows, not surviving rows, because delete
+                    # positions refer to the original file.
                     offset = end
                     if predicate is not None:
                         filtered = pa.Table.from_batches([batch]).filter(predicate)

@@ -2,6 +2,7 @@
 from scripts.lamda.models.sgd import SGDAdapter
 
 
+# Load optional neural dependencies only when a neural model is selected.
 def _lightning(kind, **options):
     try:
         from scripts.lamda.models.lightning import LightningAdapter
@@ -17,6 +18,7 @@ MODEL_FACTORIES = {
 }
 
 
+# Resolve a registered model name through the common adapter interface.
 def create_adapter(name, **options):
     if name not in MODEL_FACTORIES:
         raise ValueError(f"Unknown model {name!r}; choose from {', '.join(MODEL_FACTORIES)}")

@@ -14,15 +14,18 @@ class LocalFileIO(FsspecFileIO):
     adapter local-only so remote S3 keys are never inadvertently decoded.
     """
 
+    # Reject remote schemes and decode percent escapes for local filesystem lookup.
     @staticmethod
     def _path(location: str) -> str:
         if not location.startswith("file://"):
             raise ValueError(f"Local Iceberg storage requires a file URI: {location!r}")
         return unquote(location)
 
+    # Normalize the local URI before creating the read handle.
     def new_input(self, location: str) -> FsspecInputFile:
         return super().new_input(self._path(location))
 
+    # Normalize the local URI before creating the write handle.
     def new_output(self, location: str) -> FsspecOutputFile:
         return super().new_output(self._path(location))
 

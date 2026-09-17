@@ -20,10 +20,13 @@ TYPES = {name: getattr(pa, name)() for name in
          ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64")}
 
 
+# Canonical JSON ordering makes equivalent contract values share the same identity.
 def fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
+# Index versioned feature definitions and retain YAML line locations for actionable audit
+# errors.
 def read_definitions(root: Path):
     definitions = {}
     for path in sorted((root / "feature-platform/features").glob("*.yaml")):
@@ -39,11 +42,15 @@ def read_definitions(root: Path):
     return definitions
 
 
+# Distinguish invalid feature plans from bad values encountered while executing a valid plan.
 class ContractError(ValueError):
     pass
 
 
+# Compile canonical feature dependencies into a reusable, deterministic execution order.
 class Plan:
+    # Validate supported operations and model representations before evaluating any source
+    # batches.
     def __init__(self, contract):
         self.contract = contract
         self.outputs = contract["features"]
@@ -56,6 +63,8 @@ class Plan:
                            for ref, column in zip(self.outputs, contract["columns"])}
         self.definitions, self.order, active, done = definitions, [], set(), set()
 
+        # A depth-first traversal detects cycles and missing dependencies while ordering inputs
+        # before outputs.
         def visit(ref):
             if ref in active:
                 raise ContractError(f"Feature DAG cycle at {ref}")
@@ -114,7 +123,9 @@ class Plan:
         self.digest = fingerprint({"contract": {k: v for k, v in contract.items() if k != "definitions"},
                                    "definitions": {ref: definitions[ref] for ref in self.order}})
 
+    # Attach upstream feature chains to each model input for audit and artifact explanations.
     def lineage(self):
+        # Recursively expand input references from each output back to its raw feature sources.
         def chain(ref):
             node = self.definitions[ref]
             return [*sum((chain(dep) for dep in node.get("inputs", [])), []), ref]
@@ -207,8 +218,12 @@ class Plan:
                             batch, offset, value)
             if issues.error_count == start_errors:
                 values[ref] = value
+        # Do not construct a tensor if a required feature failed validation or could not be
+        # computed.
         if any(ref not in values for ref in self.outputs):
             return None
+        # Build sparse columns in canonical output order, checking float32 precision before
+        # storing nonzeros.
         indices, offsets, data = [], [0], []
         tensor_errors = issues.error_count
         for ref in self.outputs:
@@ -244,6 +259,7 @@ class Plan:
         return matrix
 
 
+# Check the final sparse tensor boundary independently of per-feature validation.
 def validate_tensor(matrix, contract, issues, rows):
     if not sparse.isspmatrix_csr(matrix):
         issues.add("TENSOR_FORMAT", "model_input", "tensor", {}, "Expected CSR matrix")

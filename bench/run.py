@@ -1,3 +1,4 @@
+# CLI entry point for comparing ingestion scenarios under the same measurement harness.
 from __future__ import annotations
 
 import argparse
@@ -10,6 +11,7 @@ from bench.lamda_scenarios import get_scenario, scenario_names
 from scripts.load_lamda import DEFAULT_BATCH_SIZE
 
 
+# Define workload caps, optional profiling, output location, and opt-in destination cleanup.
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Benchmark and compare dlt ingestion methods from Hugging Face into Snowflake."
@@ -86,12 +88,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# Expand the default or all selection through the registered scenario names.
 def selected_scenarios(raw: list[str] | None) -> list[str]:
     if raw is None or "all" in raw:
         return scenario_names()
     return raw
 
 
+# Run selected scenarios with common options and write individual results plus a combined
+# summary.
 def main() -> None:
     args = parse_args()
     options = {

@@ -22,6 +22,7 @@ from scripts.lamda.contracts import ContractError, Plan, fingerprint
 from scripts.lamda.data import METADATA, SPLITS, SplitPolicy, write_json
 
 
+# Convert diagnostic examples into JSON-safe values without emitting NaN or infinity tokens.
 def serial(value):
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
@@ -32,12 +33,15 @@ def serial(value):
     return value if value is None or isinstance(value, (str, int, float, bool)) else str(value)
 
 
+# Aggregate repeated violations while retaining only a bounded number of examples per issue.
 class Issues:
+    # Track total errors separately from distinct diagnostic records and their example budget.
     def __init__(self, examples=3):
         self.items = {}
         self.examples = examples
         self.error_count = 0
 
+    # Combine matching code/stage/feature diagnostics and count errors used by certification.
     def add(self, code, stage, feature, node, message, *, count=1, examples=(), severity="error"):
         if count <= 0:
             return
@@ -51,6 +55,7 @@ class Issues:
         if severity == "error":
             self.error_count += int(count)
 
+    # Translate Arrow violation masks into counts and a few source-addressable row examples.
     def mask(self, code, stage, feature, node, message, mask, batch, offset, values=None):
         mask = pc.fill_null(mask, False)
         count = pc.sum(pc.cast(mask, pa.int64())).as_py() or 0
@@ -71,11 +76,14 @@ class Issues:
                 examples.append(example)
         self.add(code, stage, feature, node, message, count=count, examples=examples)
 
+    # Return diagnostics in a stable order with errors before warnings.
     def records(self):
         return sorted(self.items.values(), key=lambda x: (x["severity"] != "error", x["stage"], x["feature"], x["code"]))
 
 
+# Carry the complete failed report and its location back to training callers.
 class AuditError(ValueError):
+    # Summarize the first errors in the exception while leaving full diagnostics in report.json.
     def __init__(self, report, directory):
         self.report, self.directory = report, directory
         errors = [i for i in report["issues"] if i["severity"] == "error"]
@@ -85,6 +93,7 @@ class AuditError(ValueError):
 
 class Profile:
     """Exact distinct counts; low cardinalities stay in RAM, others spill to SQLite."""
+    # Keep streaming numeric moments and a small distinct-value counter before spilling to disk.
     def __init__(self, name, dtype, database, limit=512):
         self.name, self.dtype, self.db, self.limit = name, str(dtype), database, limit
         self.rows = self.nulls = self.nonfinite = self.n = 0
@@ -92,6 +101,7 @@ class Profile:
         self.minimum = self.maximum = None
         self.counter, self.spilled = Counter(), False
 
+    # Merge batch statistics and exact value counts without retaining all observed rows.
     def add(self, array):
         self.rows += len(array)
         self.nulls += array.null_count
@@ -126,6 +136,8 @@ class Profile:
             self.spilled = True
         self.db.executemany("INSERT INTO distinct_values VALUES (?, ?, ?) ON CONFLICT(col, value) DO UPDATE SET n=n+excluded.n", rows)
 
+    # Summarize raw observations while withholding identifying fields from frequent-value
+    # output.
     def result(self):
         if self.spilled:
             distinct = self.db.execute("SELECT COUNT(*) FROM distinct_values WHERE col=?", (self.name,)).fetchone()[0]
@@ -149,6 +161,7 @@ class Profile:
                 "top_values": [{"value": json.loads(v), "count": n} for v, n in top]}
 
 
+# Write machine-readable diagnostics and an escaped HTML view alongside console summaries.
 def render(report, directory):
     write_json(directory / "report.json", report)
     rows = "".join("<tr>" + "".join(f"<td>{html.escape(str(i[k]))}</td>" for k in
@@ -199,6 +212,8 @@ def run_audit(source, directory: Path, *, policy=SplitPolicy(), batch_size=4096,
         stage_directory.mkdir()
         for split in SPLITS:
             (stage_directory / split).mkdir()
+    # Keep schema and raw-data diagnostics available even when the feature plan cannot be
+    # compiled.
     plan = None
     scan_finished = False
     try:
@@ -274,6 +289,8 @@ def run_audit(source, directory: Path, *, policy=SplitPolicy(), batch_size=4096,
                         identities.append(apk)
                 else:
                     meta = None
+                # Run the same deterministic feature plan used at inference, then stage only
+                # batches with no new errors.
                 matrix = plan.execute(batch, issues, offset=rows, model=model) if plan is not None else None
                 if (stage_directory is not None and matrix is not None and meta is not None
                         and issues.error_count == start_errors):
@@ -326,6 +343,8 @@ def run_audit(source, directory: Path, *, policy=SplitPolicy(), batch_size=4096,
         (directory / "working.sqlite").unlink(missing_ok=True)
     report.update(rows=rows, complete_scan=scan_finished and max_rows is None,
                   class_counts=counts, issues=issues.records())
+    # Certification requires full coverage and no errors; sampled or interrupted scans cannot
+    # authorize training.
     report["certified"] = report["complete_scan"] and issues.error_count == 0
     report["status"] = "passed" if report["certified"] else "failed" if issues.error_count else "advisory"
     if report["complete_scan"] and observations_root is not None:
@@ -351,6 +370,8 @@ def run_audit(source, directory: Path, *, policy=SplitPolicy(), batch_size=4096,
     return report
 
 
+# Accept certification only for the identical snapshot, contract, split policy, and model
+# family.
 def require_certified(report, source, policy, model):
     if (not report.get("certified") or not report.get("complete_scan")
             or report.get("contract_sha256") != fingerprint(source.contract)

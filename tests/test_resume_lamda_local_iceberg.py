@@ -1,3 +1,5 @@
+# Offline recovery integration cases using real local Iceberg catalogs and missing provenance
+# keys.
 import contextlib
 import gc
 import io
@@ -13,7 +15,9 @@ from scripts.load_lamda_local_iceberg import local_catalog_config, open_local_ca
 from scripts.resume_lamda_local_iceberg import key_inventory, resume_samples
 
 
+# Check exact provenance-key recovery, safe reruns, and refusal to mix changed snapshots.
 class RecoveryTests(unittest.TestCase):
+    # Create deliberate holes across two source files, including nullable feature rows.
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
@@ -44,6 +48,7 @@ class RecoveryTests(unittest.TestCase):
         gc.collect()
         self.tmp.cleanup()
 
+    # Recover in two-row commits so tests can exercise interruption between committed chunks.
     def recover(self, **kwargs):
         with contextlib.redirect_stdout(io.StringIO()):
             return resume_samples(self.snapshot, source_catalog=self.source,

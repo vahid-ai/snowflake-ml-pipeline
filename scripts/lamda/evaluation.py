@@ -5,6 +5,8 @@ from sklearn.metrics import (
     log_loss, precision_recall_curve, precision_score, recall_score, roc_auc_score,
 )
 
+# Choose the validation-set F1 optimum; callers must keep test labels out of threshold
+# selection.
 def choose_threshold(labels, probabilities) -> float:
     precision, recall, thresholds = precision_recall_curve(labels, probabilities)
     f1 = np.divide(2 * precision[:-1] * recall[:-1], precision[:-1] + recall[:-1],
@@ -13,6 +15,8 @@ def choose_threshold(labels, probabilities) -> float:
     return float(thresholds[np.flatnonzero(f1 == f1.max())[-1]])
 
 
+# Report thresholded detection quality and ranking quality, leaving undefined single-class
+# metrics null.
 def metrics(labels, probabilities, threshold: float, *, score_kind="probability") -> dict:
     labels, probabilities = np.asarray(labels), np.asarray(probabilities)
     predicted = probabilities >= threshold

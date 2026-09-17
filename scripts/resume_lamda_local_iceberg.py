@@ -50,6 +50,8 @@ def key_inventory(table: Table) -> dict[str, set[int]]:
     return keys
 
 
+# Reject local rows outside the pinned source before computing the exact provenance-key
+# difference.
 def missing_keys(expected: dict[str, set[int]], present: dict[str, set[int]]) -> dict[str, set[int]]:
     for name, rows in present.items():
         if rows - expected.get(name, set()):
@@ -84,6 +86,8 @@ def missing_filter(missing: dict[str, set[int]]):
     return conditions[0] if conditions else AlwaysFalse()
 
 
+# Recover only missing source keys and verify the complete destination inventory after
+# appending.
 def resume_samples(
     source_snapshot_id: int,
     *, local_root: Path = DEFAULT_LOCAL_ROOT,
@@ -133,6 +137,8 @@ def resume_samples(
                 print(f"lamda_samples: {before + loaded:,} rows stored ({loaded:,} recovered)", flush=True)
             if loaded != remaining:
                 raise RuntimeError(f"Expected {remaining} missing rows, recovered {loaded}")
+        # Read committed state again; successful writes alone do not prove complete or
+        # duplicate-free recovery.
         target.refresh()
         actual = key_inventory(target)
         if actual != expected:
@@ -155,6 +161,7 @@ def resume_samples(
         local.close()
 
 
+# Require an explicit source snapshot so recovery cannot silently mix source revisions.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-snapshot-id", type=int, required=True,

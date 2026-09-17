@@ -32,6 +32,8 @@ except ImportError:
     HAS_LIGHTNING = False
 
 
+# Compare adapter behavior under the same local source, held-out splits, and MLflow tracking
+# assertions.
 class ModelPipelineTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -63,9 +65,12 @@ class ModelPipelineTests(unittest.TestCase):
         self.catalog.close()
         self.tmp.cleanup()
 
+    # Construct a fresh snapshot-pinned input for each model invocation.
     def source(self):
         return IcebergInput(self.table, self.contract)
 
+    # Train a selected backend, reload its artifact, and verify parent/child tracking and
+    # inference outputs.
     def run_model(self, name, output=None, **kwargs):
         output = output or self.root / name
         with contextlib.redirect_stdout(io.StringIO()):

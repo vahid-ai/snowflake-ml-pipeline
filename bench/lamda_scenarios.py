@@ -1,3 +1,5 @@
+# Comparable LAMDA workloads for Arrow/Parquet, streamed Python records, Snowflake, and R2
+# Iceberg.
 from __future__ import annotations
 
 import urllib.request
@@ -23,12 +25,14 @@ from scripts.load_lamda_r2_iceberg import (
 )
 
 
+# Execute a destination query with dlt-managed client and cursor lifetimes.
 def _query(pipeline: dlt.Pipeline, sql: str) -> list[tuple]:
     with pipeline.sql_client() as client:
         with client.execute_query(sql) as cursor:
             return cursor.fetchall()
 
 
+# Compare loaded row counts by source configuration and split.
 def _db_counts(pipeline: dlt.Pipeline, table: str = "lamda_samples") -> dict[str, int]:
     with pipeline.sql_client() as client:
         qualified = client.make_qualified_table_name(table)
@@ -45,6 +49,7 @@ def _db_counts(pipeline: dlt.Pipeline, table: str = "lamda_samples") -> dict[str
     return {f"{config}.{split}": int(row_count) for config, split, row_count in rows}
 
 
+# Count a destination table using the connector-qualified table name.
 def _table_count(pipeline: dlt.Pipeline, table: str) -> int:
     with pipeline.sql_client() as client:
         qualified = client.make_qualified_table_name(table)
@@ -65,11 +70,13 @@ def _destination_bytes(pipeline: dlt.Pipeline) -> int:
     return int(rows[0][0])
 
 
+# Remove the benchmark dataset only when the caller has selected destination cleanup.
 def _drop_dataset(pipeline: dlt.Pipeline) -> None:
     with pipeline.sql_client() as client:
         client.drop_dataset()
 
 
+# Optionally sum advertised shard sizes using HEAD requests without downloading their bodies.
 def _probe_remote_bytes(files: list[dict], enabled: bool) -> int | None:
     if not enabled:
         return None
@@ -84,6 +91,7 @@ def _probe_remote_bytes(files: list[dict], enabled: bool) -> int | None:
     return total
 
 
+# Create bounded Python-record batches for the streaming-dataset comparison path.
 def _streaming_records(
     limit_per_split: int,
     batch_size: int,
@@ -125,6 +133,7 @@ def _streaming_records(
                 yield batch
 
 
+# Expose streaming records as the dlt sample resource used by the benchmark.
 @dlt.resource(name="lamda_samples", write_disposition="replace")
 def streaming_lamda_samples(
     limit_per_split: int,
@@ -138,6 +147,7 @@ def streaming_lamda_samples(
     )
 
 
+# Collect destination row/storage counters before optional benchmark-schema removal.
 def _finalize(
     context: BenchmarkContext,
     pipeline: dlt.Pipeline,
@@ -255,6 +265,7 @@ def benchmark_streaming_dlt_snowflake(
     _finalize(context, pipeline, options)
 
 
+# Resolve a loaded table through the pipeline filesystem client and configured Iceberg catalog.
 def _iceberg_table(pipeline: dlt.Pipeline, table: str):
     catalog = pipeline.destination_client().get_open_table_catalog(TABLE_FORMAT)
     return catalog.load_table(f"{pipeline.dataset_name}.{table}")
@@ -401,9 +412,11 @@ SCENARIOS = {
 }
 
 
+# Expose available scenarios to CLI argument selection.
 def scenario_names() -> list[str]:
     return sorted(SCENARIOS)
 
 
+# Retrieve the registered workload callable for a selected scenario name.
 def get_scenario(name: str):
     return SCENARIOS[name]

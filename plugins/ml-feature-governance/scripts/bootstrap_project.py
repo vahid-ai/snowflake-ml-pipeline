@@ -26,10 +26,13 @@ AGENTS_START = "<!-- ml-feature-governance:start -->"
 AGENTS_END = "<!-- ml-feature-governance:end -->"
 
 
+# Stop bootstrap when a managed file has local edits or governance markers cannot be safely
+# replaced.
 class ManagedFileConflict(RuntimeError):
     pass
 
 
+# Enumerate template files deterministically before copying missing scaffold content.
 def template_files(root: Path) -> Iterable[Path]:
     return sorted(path for path in root.rglob("*") if path.is_file())
 
@@ -50,6 +53,8 @@ def copy_missing(src_root: Path, dst_root: Path) -> tuple[list[str], list[str]]:
     return created, preserved
 
 
+# Fingerprint exact managed-file bytes so upgrades can distinguish generated content from local
+# edits.
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -58,6 +63,8 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+# Recover prior managed hashes when available; malformed or absent metadata yields an empty
+# mapping.
 def read_governance_lock(project: Path) -> dict[str, object]:
     path = project / ".feature-platform" / "governance.lock.json"
     if not path.exists():
@@ -106,6 +113,8 @@ def upsert_agents_block(path: Path, body: str) -> str:
     return "updated" if existing else "created"
 
 
+# Record installed plugin identity, contract version, and the byte hashes used for future safe
+# upgrades.
 def governance_lock(managed_files: dict[str, str] | None = None) -> dict[str, object]:
     return {
         "plugin": {"name": PLUGIN_NAME, "version": PLUGIN_VERSION},
@@ -119,6 +128,7 @@ def governance_lock(managed_files: dict[str, str] | None = None) -> dict[str, ob
     }
 
 
+# Persist the verified managed-file inventory after initialization succeeds.
 def write_governance_lock(project: Path, managed_files: dict[str, str] | None = None) -> Path:
     path = project / ".feature-platform" / "governance.lock.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,6 +136,7 @@ def write_governance_lock(project: Path, managed_files: dict[str, str] | None = 
     return path
 
 
+# Run the project-installed validator against the resulting canonical definitions.
 def validate(project: Path) -> int:
     validator = project / ".feature-platform" / "tools" / "featurectl.py"
     proc = subprocess.run(
@@ -135,6 +146,8 @@ def validate(project: Path) -> int:
     return proc.returncode
 
 
+# Copy missing templates, safely synchronize owned files, preserve surrounding agent guidance,
+# and validate the result.
 def main() -> int:
     parser = argparse.ArgumentParser(description="Initialize standalone ML Feature Governance")
     parser.add_argument("--project-dir", default=".")

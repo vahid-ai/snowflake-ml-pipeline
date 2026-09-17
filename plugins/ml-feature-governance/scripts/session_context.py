@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Session hook: remind the agent whether governance is already initialized in this workspace.
 import json
 
 from hook_utils import project_root, read_payload
@@ -19,6 +20,8 @@ else:
         "ML Feature Governance is available. Use its init skill before ML feature/data pipeline implementation."
     )
 
+# Emit the host-specific context envelope expected by Cursor, or plain context for other
+# supported clients.
 if "cursor_version" in payload or payload.get("hook_event_name") == "sessionStart":
     print(json.dumps({"additional_context": context}))
 else:

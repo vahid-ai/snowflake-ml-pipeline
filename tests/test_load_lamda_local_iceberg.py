@@ -27,7 +27,11 @@ from scripts.load_lamda_local_iceberg import (
 )
 
 
+# Exercise complete refresh and failure recovery using distinct source and local destination
+# catalogs.
 class LocalIcebergTests(unittest.TestCase):
+    # Include nullable values and a destination path with spaces to cover real storage and URI
+    # edge cases.
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
@@ -52,16 +56,20 @@ class LocalIcebergTests(unittest.TestCase):
         gc.collect()
         self.tmp.cleanup()
 
+    # Create fixture tables with real schemas and optional committed rows.
     def create_table(self, name, data):
         table = self.source.create_table(("raw_lamda", name), schema=data.schema)
         if data.num_rows:
             table.append(data)
         return table
 
+    # Inject the local fixture source so integration tests never need R2 credentials.
     def run_copy(self, **kwargs):
         with contextlib.redirect_stdout(io.StringIO()):
             return run_pipeline(source_catalog=self.source, local_root=self.local_root, **kwargs)
 
+    # Reopen the destination independently to test persisted catalog state rather than cached
+    # table objects.
     def read_local(self, name="lamda_samples"):
         catalog = open_local_catalog(self.local_root)
         try:

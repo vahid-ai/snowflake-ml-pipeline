@@ -20,10 +20,14 @@ class SparseBatches(IterableDataset):
     No worker processes or distributed devices: each epoch visits each selected
     row exactly once. Shards remain sparse until minibatch slicing is complete.
     """
+    # Store training-only input access and the batch bound used when converting sparse rows to
+    # tensors.
     def __init__(self, data: TrainingData, batch_size: int, *, benign_only=False, seed=42):
         self.data, self.batch_size = data, batch_size
         self.benign_only, self.seed, self.epoch = benign_only, seed, 0
 
+    # Reshuffle deterministically each epoch and restrict autoencoder fitting to benign
+    # examples.
     def __iter__(self):
         rng = np.random.default_rng(self.seed + self.epoch)
         self.epoch += 1
@@ -39,6 +43,8 @@ class SparseBatches(IterableDataset):
                 yield x, y
 
 
+# Build a scalar-logit classifier or a symmetric reconstruction network from the selected
+# dimensions.
 def build_network(kind, n_features, hidden_dims, latent_dim, dropout):
     if kind == "mlp":
         dimensions = [n_features, *hidden_dims, 1]
@@ -56,6 +62,7 @@ def build_network(kind, n_features, hidden_dims, latent_dim, dropout):
 
 class MalwareModule(pl.LightningModule):
     """MLP predicts a label logit; autoencoder predicts one logit per input bit."""
+    # Save reconstruction parameters and register class weights as device-aware model state.
     def __init__(self, kind, n_features, hidden_dims, latent_dim, dropout, learning_rate,
                  class_weights=(1.0, 1.0)):
         super().__init__()
@@ -63,9 +70,12 @@ class MalwareModule(pl.LightningModule):
         self.network = build_network(kind, n_features, hidden_dims, latent_dim, dropout)
         self.register_buffer("class_weights", torch.tensor(class_weights, dtype=torch.float32))
 
+    # Leave logits untransformed so each loss and score function applies its own interpretation.
     def forward(self, x):
         return self.network(x)
 
+    # Use reconstruction BCE for anomaly learning or class-weighted BCE for supervised malware
+    # detection.
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
@@ -79,21 +89,27 @@ class MalwareModule(pl.LightningModule):
         self.log("train_loss", loss, on_step=False, on_epoch=True, batch_size=len(x), logger=False)
         return loss
 
+    # Use the configured learning rate for all trainable network parameters.
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
 
 class EpochTracking(pl.Callback):
     """Use the shared run, without giving Lightning ownership of its lifetime."""
+    # Reuse the orchestrator-owned tracking run and maintain a per-epoch sample count.
     def __init__(self, run):
         self.run, self.rows = run, 0
 
+    # Reset counts so metrics describe this epoch rather than cumulative visits.
     def on_train_epoch_start(self, trainer, module):
         self.rows = 0
 
+    # Count actual rows received, including a potentially short final minibatch.
     def on_train_batch_end(self, trainer, module, outputs, batch, batch_idx):
         self.rows += len(batch[0])
 
+    # Fail empty training populations and report epoch loss through the common tracking
+    # interface.
     def on_train_epoch_end(self, trainer, module):
         if not self.rows:
             raise ValueError("No training rows reached the Lightning model")
@@ -110,9 +126,11 @@ class NeuralPredictor:
     batch_size: int
     _network: object = field(default=None, init=False, repr=False)
 
+    # Exclude the lazily rebuilt Torch module from the portable serialized predictor.
     def __getstate__(self):
         return {**self.__dict__, "_network": None}
 
+    # Rebuild CPU weights on demand and score bounded minibatches without enabling gradients.
     def predict_scores(self, matrix):
         if self._network is None:
             self._network = build_network(**self.configuration)
@@ -130,9 +148,12 @@ class NeuralPredictor:
         return np.concatenate(result) if result else np.empty(0, dtype=np.float32)
 
 
+# Adapt both neural model families to the training-only backend contract.
 class LightningAdapter:
     backend = "lamda_iceberg_lightning_v1"
 
+    # Validate architecture and execution settings before creating a trainer or allocating
+    # tensors.
     def __init__(self, *, kind, hidden_dims=(256, 64), latent_dim=32, dropout=0.1,
                  learning_rate=0.001, neural_batch_size=256, accelerator="cpu"):
         if kind not in ("mlp", "autoencoder"):
@@ -151,9 +172,12 @@ class LightningAdapter:
                                learning_rate=learning_rate, neural_batch_size=neural_batch_size,
                                accelerator=accelerator)
 
+    # Return a copy so orchestration cannot mutate the adapter configuration.
     def candidates(self):
         return [self.parameters.copy()]
 
+    # Train on one device, log epochs to the shared run, and export a portable predictor plus
+    # checkpoint.
     def fit(self, data, parameters, *, epochs, seed, run, directory):
         pl.seed_everything(seed, workers=True)
         p = parameters

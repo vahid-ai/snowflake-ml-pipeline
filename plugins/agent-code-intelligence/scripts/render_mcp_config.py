@@ -21,6 +21,8 @@ if host not in supported_hosts:
     print("Unknown host. Choose: " + ", ".join(supported_hosts), file=sys.stderr)
     sys.exit(2)
 
+# Translate only the chosen profile, adding host-specific arguments and reporting unsupported
+# integrations separately.
 servers = {}
 skipped = []
 for name in profiles[profile]:

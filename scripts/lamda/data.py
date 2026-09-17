@@ -18,6 +18,7 @@ METADATA = ("hash", "label", "year_month", "split_name", "config_name", "dataset
 SPLITS = ("train", "validation", "test")
 
 
+# Hash files incrementally so large artifacts do not need to fit in memory.
 def digest(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as stream:
@@ -26,6 +27,7 @@ def digest(path: Path) -> str:
     return h.hexdigest()
 
 
+# Reject non-finite numbers so manifests remain portable, strict JSON.
 def write_json(path: Path, value) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
@@ -40,6 +42,8 @@ def load_contract(feature_set="lamda.malware_baseline@1") -> dict:
         raise ValueError(f"Unknown feature set: {feature_set}")
     by_ref = read_definitions(ROOT)
     selected, columns = {}, []
+    # Traverse dependencies before collecting raw columns; shared inputs enter the projection
+    # once.
     def resolve(ref):
         if ref in selected:
             return
@@ -87,18 +91,21 @@ def binary_matrix(batch: pa.Table | pa.RecordBatch, columns: list[str]) -> spars
     ).tocsr()
 
 
+# Require sortable calendar-month strings before applying temporal split cutoffs.
 def month(value: str) -> str:
     if not isinstance(value, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", value):
         raise ValueError("year_month and temporal cutoffs must be YYYY-MM")
     return value
 
 
+# Freeze either temporal boundaries or a repeatable hash-based validation split.
 @dataclass(frozen=True)
 class SplitPolicy:
     seed: int = 42
     train_through: str | None = None
     validation_through: str | None = None
 
+    # Reject partial or reversed cutoffs before any source rows are consumed.
     def __post_init__(self):
         if self.seed < 0 or self.seed >= 2**32:
             raise ValueError("seed must be in [0, 2**32)")
@@ -108,6 +115,8 @@ class SplitPolicy:
             if month(self.train_through) >= month(self.validation_through):
                 raise ValueError("train_through must precede validation_through")
 
+    # Preserve the published test set unless temporal splitting is requested; hash APK identity
+    # for stable holdouts.
     def assign(self, apk: str, published: str, collected: str) -> str:
         month(collected)
         if published not in ("train", "test"):
@@ -120,12 +129,16 @@ class SplitPolicy:
         value = hashlib.sha256(f"{self.seed}:{apk}".encode("utf-8")).digest()
         return "validation" if int.from_bytes(value[:8], "big") % 10000 < 2000 else "train"
 
+    # Persist the policy identifier and inputs so the exact partitioning can be replayed.
     def manifest(self) -> dict:
         return {"id": "lamda.collection_month@1" if self.train_through else
                 "lamda.published_hash_validation@1", **self.__dict__}
 
 
+# Keep training and audit scans on the same immutable table snapshot.
 class IcebergInput:
+    # Resolve snapshot schema and field IDs once, while giving the audit access to all source
+    # columns.
     def __init__(self, table, contract: dict, snapshot_id: int | None = None):
         self.table, self.contract = table, contract
         snapshot = table.snapshot_by_id(snapshot_id) if snapshot_id is not None else table.current_snapshot()
@@ -157,12 +170,15 @@ class IcebergInput:
             "config_name": contract["config_name"],
         }
 
+    # Expose only metadata and contract input columns to consumers of the training scan.
     def batches(self, batch_size: int):
         yield from self._batches(self.scan, batch_size)
 
+    # Expose the full snapshot projection for checks beyond the model inputs.
     def audit_batches(self, batch_size: int):
         yield from self._batches(self.audit_scan, batch_size)
 
+    # Cast bounded reader batches to the scan projection so callers see consistent Arrow types.
     def _batches(self, scan, batch_size: int):
         if batch_size < 1:
             raise ValueError("batch_size must be positive")
@@ -187,6 +203,7 @@ def stage(source: IcebergInput, directory: Path, policy: SplitPolicy, batch_size
     return json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
 
 
+# Pair sparse feature shards with their matching row metadata without loading the entire cache.
 def cached(directory: Path, stems: list[str]):
     for name in stems:
         stem = directory / name

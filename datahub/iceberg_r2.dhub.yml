@@ -1,3 +1,4 @@
+# Read table metadata from the same R2 catalog used by the ingestion pipeline.
 source:
   type: iceberg
   config:
@@ -16,6 +17,7 @@ source:
         s3.secret-access-key: "${R2_SECRET_ACCESS_KEY}"
         s3.region: "${R2_REGION}"
 
+# Send the extracted catalog metadata to the configured DataHub service.
 sink:
   type: datahub-rest
   config:

@@ -13,8 +13,8 @@
   "canonical_root": "feature-platform",
   "generated_root": "feature-platform/generated",
   "managed_files": {
-    ".feature-platform/tools/featurectl.py": "26f2c3dca6ad886d45237e7fe04b7288517b65e62644668827e5f15b30af3f35",
+    ".feature-platform/tools/featurectl.py": "073d4afef8e6027300fc6c95dfff1f8db12a7dcb5b0a0dde61e401ba2268fb97",
     ".cursor/rules/ml-feature-governance.mdc": "220fafec56656a36df39fd0386fccb2d06753e410ec43da7dc8ff75d29774761"
   },
-  "generated_at": "2026-09-12T00:37:16.383815+00:00"
+  "generated_at": "2026-09-17T18:55:59.552469+00:00"
 }

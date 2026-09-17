@@ -10,6 +10,13 @@ For code search, debugging, refactoring, or architecture work, read
 Start with exact local searches and targeted file reads; use structural, symbol, semantic, or graph tools when needed.
 For memory work, use `plugins/agent-code-intelligence/skills/memory-router/SKILL.md` and retain only verified lessons.
 
+## Code documentation
+
+For source documentation or README changes, follow
+`plugins/agent-code-intelligence/skills/brief-readmes-inline-comments/SKILL.md`.
+Keep READMEs brief; place implementation explanations in nearby code comments or
+docstrings, retaining essential setup/run/test instructions and links in READMEs.
+
 ## ML workflow
 
 For ML feature work, use the relevant skill in `plugins/ml-feature-governance/skills/` and the policy in

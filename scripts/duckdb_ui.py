@@ -35,6 +35,7 @@ class R2ConfigurationError(RuntimeError):
     """Raised when the R2 environment is incompletely configured."""
 
 
+# Resolve a mandatory environment setting and report a targeted setup error if it is absent.
 def _require(name: str) -> str:
     value = os.getenv(name)
     if not value:
@@ -77,6 +78,7 @@ def attach_catalog(con: duckdb.DuckDBPyConnection, alias: str = CATALOG_ALIAS) -
     return uri
 
 
+# Configure DuckDB, attach the Iceberg catalog, and start the optional local browsing UI.
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(

@@ -50,10 +50,14 @@ VERIFICATION_KINDS = {
     "backward_compatibility", "migration"
 }
 
+# Report malformed canonical documents with their source paths before semantic validation
+# proceeds.
 class ValidationError(Exception):
     pass
 
 
+# Load canonical YAML safely and turn dependency or parse failures into actionable validation
+# errors.
 def load_yaml(path: Path) -> Any:
     try:
         import yaml  # type: ignore
@@ -68,6 +72,8 @@ def load_yaml(path: Path) -> Any:
         raise ValidationError(f"{path}: invalid YAML: {exc}")
 
 
+# Dispatch supported canonical document formats while keeping parser failures tied to the input
+# path.
 def load_doc(path: Path) -> Any:
     if path.suffix.lower() == ".json":
         try:
@@ -79,6 +85,7 @@ def load_doc(path: Path) -> Any:
     return None
 
 
+# Collect supported documents in deterministic order from one canonical definition directory.
 def docs_under(root: Path, subdir: str) -> Iterable[tuple[Path, Any]]:
     d = root / subdir
     if not d.exists():
@@ -90,6 +97,7 @@ def docs_under(root: Path, subdir: str) -> Iterable[tuple[Path, Any]]:
     return out
 
 
+# Recognize the supported primitive and parameterized logical type vocabulary.
 def valid_type(t: Any) -> bool:
     if not isinstance(t, str) or not t.strip():
         return False
@@ -99,6 +107,8 @@ def valid_type(t: Any) -> bool:
     return any(p.match(t) for p in TYPE_PATTERNS)
 
 
+# Inspect nested configuration keys for backend-specific settings that do not belong in portable
+# semantics.
 def walk_keys(obj: Any) -> Iterable[str]:
     if isinstance(obj, dict):
         for k, v in obj.items():
@@ -109,6 +119,7 @@ def walk_keys(obj: Any) -> Iterable[str]:
             yield from walk_keys(v)
 
 
+# Build an immutable feature reference when both the ID and positive version are present.
 def feature_key(feature: dict[str, Any]) -> str | None:
     fid = feature.get("id")
     version = feature.get("version")
@@ -117,10 +128,14 @@ def feature_key(feature: dict[str, Any]) -> str | None:
     return None
 
 
+# Require an integer identifier while excluding booleans, which Python otherwise treats as
+# integers.
 def positive_id(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+# Check table identity and field/snapshot IDs without mixing model configuration into storage
+# bindings.
 def validate_iceberg_reference(value: Any, prefix: str, errors: list[str], field: bool = False) -> None:
     if not isinstance(value, dict):
         errors.append(f"{prefix}: storage/dataset reference must be a mapping")
@@ -147,6 +162,8 @@ def validate_iceberg_reference(value: Any, prefix: str, errors: list[str], field
         errors.append(f"{prefix}: ML/catalog metadata belongs outside the Iceberg storage binding")
 
 
+# Validate one feature contract, separating raw bindings, transformations, fitted state, and
+# model representations.
 def validate_feature(path: Path, f: Any, errors: list[str]) -> str | None:
     prefix = str(path)
     if not isinstance(f, dict):
@@ -304,6 +321,7 @@ def validate_feature(path: Path, f: Any, errors: list[str]) -> str | None:
     return feature_key(f)
 
 
+# Index source schemas and verify declared types, nullability, locations, and timestamp roles.
 def validate_sources(root: Path, errors: list[str]) -> dict[str, dict[str, Any]]:
     sources: dict[str, dict[str, Any]] = {}
     for path, doc in docs_under(root, "sources"):
@@ -363,6 +381,7 @@ def validate_sources(root: Path, errors: list[str]) -> dict[str, dict[str, Any]]
     return sources
 
 
+# Index entity definitions and check that join-key types and nullability are explicit.
 def validate_entities(root: Path, errors: list[str]) -> set[str]:
     entities: set[str] = set()
     for path, doc in docs_under(root, "entities"):
@@ -402,6 +421,7 @@ def validate_entities(root: Path, errors: list[str]) -> set[str]:
     return entities
 
 
+# Cross-check features against declared entities, source columns, and source-level types.
 def validate_feature_bindings(
     features: dict[str, dict[str, Any]],
     origins: dict[str, Path],
@@ -485,6 +505,8 @@ def validate_window_bindings(
                 errors.append(f"{origins[key]}: {key} window.partition_by references unknown column {partition!r} in input source {source_id!r}")
 
 
+# Require coherent backend declarations and logical-type mappings with exactly one reference
+# backend.
 def validate_capabilities(
     root: Path,
     features: dict[str, dict[str, Any]],
@@ -540,6 +562,8 @@ def validate_capabilities(
             )
 
 
+# Check versioned change intent, required verification, migration plans, and recorded approval
+# state.
 def validate_changes(root: Path, errors: list[str]) -> None:
     seen: set[str] = set()
     for path, doc in docs_under(root, "changes"):
@@ -626,6 +650,7 @@ def validate_changes(root: Path, errors: list[str]) -> None:
                     )
 
 
+# Resolve unique versioned feature references and validate their grouped model-input layout.
 def validate_feature_sets(root: Path, known: dict[str, dict[str, Any]], errors: list[str]) -> set[str]:
     set_keys: set[str] = set()
     for path, doc in docs_under(root, "feature_sets"):
@@ -712,6 +737,7 @@ def validate_feature_sets(root: Path, known: dict[str, dict[str, Any]], errors: 
     return set_keys
 
 
+# Check experiment baselines, variant references, and any snapshot-pinned dataset selections.
 def validate_experiments(root: Path, known_sets: set[str], known_features: set[str], errors: list[str]) -> None:
     for path, doc in docs_under(root, "experiments"):
         if doc is None:
@@ -769,6 +795,8 @@ def validate_experiments(root: Path, known_sets: set[str], known_features: set[s
                             errors.append(f"{path}: experiment {eid!r} variant references unknown feature {ref}")
 
 
+# Use topological traversal to reject missing dependencies and detect cycles without recursive
+# graph walking.
 def validate_dag(features: dict[str, dict[str, Any]], origins: dict[str, Path], errors: list[str]) -> None:
     indegree: dict[str, int] = {k: 0 for k in features}
     children: dict[str, list[str]] = defaultdict(list)
@@ -793,6 +821,8 @@ def validate_dag(features: dict[str, dict[str, Any]], origins: dict[str, Path], 
         errors.append("Feature DAG contains a cycle involving: " + ", ".join(cyclic))
 
 
+# Run document, binding, graph, capability, and change-contract checks and aggregate their
+# diagnostics.
 def validate_project(project: Path) -> list[str]:
     errors: list[str] = []
     root = project / "feature-platform"
@@ -846,6 +876,7 @@ def validate_project(project: Path) -> list[str]:
     return errors
 
 
+# Report whether the local governance scaffold and YAML dependency are available.
 def doctor(project: Path) -> int:
     print(f"project: {project}")
     required = {
@@ -873,6 +904,7 @@ def doctor(project: Path) -> int:
     return 2 if missing else 0
 
 
+# Expose validation and setup diagnostics with nonzero exit status for CI and editor hooks.
 def main() -> int:
     parser = argparse.ArgumentParser(prog="featurectl")
     sub = parser.add_subparsers(dest="command", required=True)

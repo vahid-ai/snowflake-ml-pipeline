@@ -44,6 +44,7 @@ PIPELINE_NAME = "lamda_feature_descriptions_r2_iceberg"
 DEFAULT_JSON = Path(__file__).resolve().parent.parent / "data" / "lamda_feature_descriptions.json"
 
 
+# Attach generator and dataset provenance uniformly to each description table.
 def _lineage(payload: dict) -> dict:
     return {
         "dataset_id": payload["dataset_id"],
@@ -53,6 +54,7 @@ def _lineage(payload: dict) -> dict:
     }
 
 
+# Emit one documented static-analysis token per row with its configuration-specific feature IDs.
 @dlt.resource(name="lamda_feature_descriptions", write_disposition="replace")
 def feature_descriptions(payload: dict) -> Iterator[dict]:
     lineage = _lineage(payload)
@@ -60,6 +62,7 @@ def feature_descriptions(payload: dict) -> Iterator[dict]:
         yield {**feature, **lineage}
 
 
+# Keep category explanations and extraction methodology alongside token-level descriptions.
 @dlt.resource(name="lamda_feature_categories", write_disposition="replace")
 def feature_categories(payload: dict) -> Iterator[dict]:
     lineage = _lineage(payload)
@@ -68,6 +71,7 @@ def feature_categories(payload: dict) -> Iterator[dict]:
         yield {**category, "feature_methodology": methodology, **lineage}
 
 
+# Document metadata and provenance columns separately from model features.
 @dlt.resource(name="lamda_column_glossary", write_disposition="replace")
 def column_glossary(payload: dict) -> Iterator[dict]:
     lineage = _lineage(payload)
@@ -75,6 +79,7 @@ def column_glossary(payload: dict) -> Iterator[dict]:
         yield {**column, **lineage}
 
 
+# Replace the three small dictionary tables in the same R2 namespace as the raw samples.
 def run_pipeline(
     json_path: Path = DEFAULT_JSON,
     dataset_name: str = DEFAULT_DATASET_NAME,
@@ -108,6 +113,7 @@ def run_pipeline(
     )
 
 
+# Select the generated dictionary file and destination namespace from CLI options.
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(

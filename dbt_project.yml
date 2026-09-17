@@ -12,6 +12,7 @@ clean-targets:
   - dbt_packages
 
 models:
+  # Views keep raw features current; materialized summaries serve repeatable analytical queries.
   snowflake_ml_pipeline:
     staging:
       +materialized: view

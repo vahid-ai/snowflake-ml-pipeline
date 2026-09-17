@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Report local retrieval-tool availability so agents can choose supported fallbacks.
 import shutil, json, os, platform
 
 checks = [
@@ -20,6 +21,7 @@ checks = [
     ("cognee-cli", "Cognee CLI"),
     ("docker", "Graphiti/Cognee container runtime")
 ]
+# Probe executable availability without installing or starting any optional services.
 rows = []
 for cmd, role in checks:
     path = shutil.which(cmd)

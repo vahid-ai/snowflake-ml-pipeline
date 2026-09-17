@@ -19,6 +19,7 @@ from mlflow.entities import Metric, Param
 from scripts.lamda.data import ROOT
 
 
+# Carry explicit tracking destinations and names without relying on a global active MLflow run.
 @dataclass(frozen=True)
 class TrackingConfig:
     uri: str | None = None
@@ -26,10 +27,13 @@ class TrackingConfig:
     run_name: str | None = None
 
 
+# Bind logging operations to one run ID, including nested candidate runs.
 class TrackedRun:
+    # Keep the client and run identity together to avoid logging to a different active run.
     def __init__(self, client: MlflowClient, run_id: str):
         self.client, self.run_id = client, run_id
 
+    # Serialize structured parameters and send bounded batches to the tracking service.
     def params(self, values: dict):
         params = [Param(str(k), json.dumps(v) if isinstance(v, (dict, list, tuple)) else str(v))
                   for k, v in values.items()]
@@ -39,6 +43,7 @@ class TrackedRun:
     def metrics(self, values: dict, step: int = 0):
         """Flatten finite scalar metrics; confusion matrices stay in JSON artifacts."""
         flat = {}
+        # Flatten nested metric dictionaries; skip arrays and non-finite values.
         def visit(prefix, value):
             if isinstance(value, dict):
                 for key, item in value.items():
@@ -51,14 +56,19 @@ class TrackedRun:
         for offset in range(0, len(items), 100):
             self.client.log_batch(self.run_id, metrics=items[offset:offset + 100])
 
+    # Upload a selected file to an optional artifact subdirectory for this run.
     def artifact(self, path: Path, artifact_path: str | None = None):
         self.client.log_artifact(self.run_id, str(path), artifact_path)
 
+    # Attach searchable descriptive metadata to this run.
     def tag(self, key: str, value: str):
         self.client.set_tag(self.run_id, key, value)
 
 
+# Own experiment selection and run lifetimes for a complete pipeline invocation.
 class TrackingSession:
+    # Use an explicit or environment tracking URI, falling back to local SQLite and local
+    # artifacts.
     def __init__(self, config: TrackingConfig):
         # SQLite works without a tracking server and supports the MLflow UI.
         default = ROOT / "data/mlflow"
@@ -77,6 +87,8 @@ class TrackingSession:
                 raise ValueError("The configured MLflow experiment is deleted")
             self.experiment_id = experiment.experiment_id
 
+    # Create a parent or child run and terminate it correctly on success, failure, or
+    # interruption.
     @contextmanager
     def run(self, name: str, *, parent: TrackedRun | None = None, tags: dict | None = None):
         run_tags = {"mlflow.runName": name, **(tags or {})}

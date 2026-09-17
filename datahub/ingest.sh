@@ -6,6 +6,7 @@
 #   infisical run --projectId=<id> --env=dev -- datahub/ingest.sh
 set -euo pipefail
 
+# Validate credentials before deriving defaults or launching the ingestion client.
 : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID is required}"
 : "${R2_BUCKET:?R2_BUCKET is required}"
 : "${R2_CATALOG_TOKEN:?R2_CATALOG_TOKEN is required}"
@@ -18,4 +19,5 @@ export R2_S3_ENDPOINT="${R2_S3_ENDPOINT:-https://${R2_ACCOUNT_ID}.r2.cloudflares
 export R2_REGION="${R2_REGION:-auto}"
 export DATAHUB_GMS_URL="${DATAHUB_GMS_URL:-http://localhost:8080}"
 
+# Replace this shell so signals and the DataHub exit status reach the caller directly.
 exec datahub ingest -c "$(dirname "$0")/iceberg_r2.dhub.yml"

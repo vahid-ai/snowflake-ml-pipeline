@@ -5,6 +5,8 @@ import argparse
 p = argparse.ArgumentParser()
 p.add_argument("need", choices=["file", "exact", "structured", "syntax", "symbol", "docs", "public-repo", "concept", "huge-corpus", "impact", "snapshot", "memory", "temporal-memory", "knowledge-memory", "stateful-agent"])
 a = p.parse_args()
+# Return an ordered retrieval recommendation for the selected need; this helper does not launch
+# tools.
 route = {
  "file": "fd -> rg --files",
  "exact": "rg -> Zoekt only for huge indexed corpora",

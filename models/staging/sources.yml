@@ -1,6 +1,7 @@
 version: 2
 
 sources:
+  # Match the schema populated by the dlt Snowflake loader and validate key provenance fields.
   - name: raw_lamda
     database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
     schema: raw_lamda

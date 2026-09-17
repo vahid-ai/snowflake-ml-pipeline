@@ -28,6 +28,8 @@ import urllib.request
 DEFAULT_DOMAIN = os.getenv("INFISICAL_API_URL", "https://app.infisical.com").rstrip("/")
 
 
+# Perform an authenticated JSON request with a bounded timeout; callers choose which response
+# fields to expose.
 def _request(url: str, token: str | None = None, data: dict | None = None) -> dict:
     body = json.dumps(data).encode() if data is not None else None
     headers = {"Content-Type": "application/json"}
@@ -39,6 +41,8 @@ def _request(url: str, token: str | None = None, data: dict | None = None) -> di
         return json.load(response)
 
 
+# Prefer an existing identity token, otherwise exchange universal-auth credentials for an access
+# token.
 def login(domain: str) -> str:
     token = os.getenv("INFISICAL_TOKEN")
     if token:
@@ -59,6 +63,7 @@ def login(domain: str) -> str:
     return result["accessToken"]
 
 
+# Fetch only workspaces visible to the authenticated identity.
 def list_projects(domain: str, token: str) -> list[dict]:
     result = _request(f"{domain}/api/v1/workspace", token)
     return result.get("workspaces", [])
@@ -81,6 +86,7 @@ def list_secret_names(domain: str, token: str, project_id: str, env: str) -> lis
     )
     result = _request(f"{domain}/api/v3/secrets/raw?{query}", token)
 
+    # Preserve folder identity when constructing a display name for each secret key.
     def qualified(secret: dict) -> str:
         path = (secret.get("secretPath") or "/").rstrip("/")
         return f"{path}/{secret['secretKey']}".lstrip("/") or secret["secretKey"]
@@ -91,6 +97,7 @@ def list_secret_names(domain: str, token: str, project_id: str, env: str) -> lis
     return sorted(names)
 
 
+# Validate project/environment filters and enumerate names without printing secret values.
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--project", help="Project (workspace) ID. Default: all visible.")

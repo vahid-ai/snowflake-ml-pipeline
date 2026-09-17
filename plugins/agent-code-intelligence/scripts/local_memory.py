@@ -14,6 +14,8 @@ con = sqlite3.connect(db)
 con.execute("CREATE TABLE IF NOT EXISTS lessons (id INTEGER PRIMARY KEY, ts TEXT, scope TEXT, title TEXT, symptom TEXT, cause TEXT, fix TEXT, verification TEXT, tags TEXT)")
 con.commit()
 
+# Require symptom, cause, fix, and verification context when adding a reusable engineering
+# lesson.
 p = argparse.ArgumentParser()
 sp = p.add_subparsers(dest="cmd", required=True)
 a = sp.add_parser("add")
@@ -31,6 +33,8 @@ l = sp.add_parser("list")
 l.add_argument("--limit", type=int, default=20)
 args = p.parse_args()
 
+# Store new lessons transactionally; search and list return bounded JSON records for agent
+# consumption.
 if args.cmd == "add":
     con.execute("INSERT INTO lessons(ts,scope,title,symptom,cause,fix,verification,tags) VALUES (?,?,?,?,?,?,?,?)",
       (datetime.now(timezone.utc).isoformat(), args.scope, args.title, args.symptom, args.cause, args.fix, args.verification, args.tags))

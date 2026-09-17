@@ -28,6 +28,8 @@ from scripts.lamda_ml import (
 from scripts.load_lamda_local_iceberg import local_catalog_config
 
 
+# Generate reproducible binary features, APK identities, published splits, and intentionally
+# excluded leakage columns.
 def fixture(n=400, offset=0):
     ids = np.arange(offset, offset + n)
     return pa.table({
@@ -46,6 +48,8 @@ def fixture(n=400, offset=0):
     })
 
 
+# Check raw-to-sparse conversion, canonical ordering, and split/threshold rules independently of
+# storage.
 class BinaryTests(unittest.TestCase):
     def test_golden_integer_widths_order_and_metadata_exclusion(self):
         for dtype in (pa.int8(), pa.int16(), pa.int32(), pa.int64(), pa.uint8()):
@@ -95,6 +99,7 @@ class BinaryTests(unittest.TestCase):
         self.assertIsNone(metrics([0, 0], [0.1, 0.2], 0.5)["roc_auc"])
 
 
+# Exercise snapshot-aware reads and training artifacts against real temporary Iceberg tables.
 class IcebergMLTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -119,6 +124,7 @@ class IcebergMLTests(unittest.TestCase):
         self.catalog.close()
         self.tmp.cleanup()
 
+    # Wrap the current fixture table with the same snapshot-pinning contract used in production.
     def source(self, snapshot=None):
         return IcebergInput(self.table, self.contract, snapshot)
 

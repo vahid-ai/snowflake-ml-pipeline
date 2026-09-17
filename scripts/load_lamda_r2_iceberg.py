@@ -47,6 +47,7 @@ MAX_LOAD_WORKERS = "2"
 DEFAULT_FILES_PER_RUN = 4
 
 
+# Set bounded writer defaults without overriding explicit operator choices.
 def apply_memory_limits() -> None:
     # Arrow resources are written to Parquet at EXTRACT time and normalize
     # passes those files through as-is. The buffered writer resolves its config
@@ -60,6 +61,8 @@ class R2ConfigurationError(RuntimeError):
     """Raised when the R2 environment is incompletely configured."""
 
 
+# Fail early with the missing variable name rather than allowing a partial connector
+# configuration.
 def _require(name: str) -> str:
     value = os.getenv(name)
     if not value:
@@ -156,6 +159,7 @@ def apply_catalog_config(catalog_name: str = "r2_data_catalog") -> None:
     dlt.config["iceberg_catalog.iceberg_catalog_config"] = r2_catalog_config()
 
 
+# Combine the catalog-compatible storage prefix with the S3 credentials used for object IO.
 def r2_destination(**kwargs: Any):
     return dlt_filesystem(
         bucket_url=r2_bucket_url(),
@@ -164,6 +168,7 @@ def r2_destination(**kwargs: Any):
     )
 
 
+# Configure memory bounds and REST catalog registration before constructing the dlt pipeline.
 def build_pipeline(
     dataset_name: str = DEFAULT_DATASET_NAME,
     pipeline_name: str = PIPELINE_NAME,
@@ -178,6 +183,8 @@ def build_pipeline(
     )
 
 
+# Replace tables with the first bounded shard group, then append subsequent groups to cap commit
+# memory.
 def run_pipeline(
     dataset_name: str = DEFAULT_DATASET_NAME,
     limit_per_file: int | None = None,
@@ -233,6 +240,7 @@ def run_pipeline(
     )
 
 
+# Expose dataset selection, sampling, and group-size controls for the remote Iceberg loader.
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(

@@ -11,26 +11,33 @@ from scripts.generate_code_diagrams import (
 )
 
 
+# Supply controlled LSP responses so graph tests can distinguish semantic resolution from name
+# guessing.
 class FakeServer:
     def __init__(self, locations=None):
         self.locations = locations or {}
         self.requests = []
 
+    # Record query positions and return only the explicitly configured symbol locations.
     def request_definition(self, path, line, column):
         self.requests.append((path, line, column))
         return self.locations.get((path, line, column), [])
 
 
+# Build the subset of an LSP location consumed by the graph extractor.
 def location(path, line):
     return {"relativePath": path, "range": {"start": {"line": line, "character": 0}}}
 
 
+# Cover syntax extraction and deterministic rendering, with an opt-in real language-server
+# integration case.
 class GraphTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    # Create source fixtures in a temporary repository without importing or executing them.
     def write(self, path, content):
         target = self.root / path
         target.parent.mkdir(parents=True, exist_ok=True)

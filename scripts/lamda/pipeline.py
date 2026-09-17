@@ -20,7 +20,9 @@ from scripts.lamda.models.base import FittedModel, ModelAdapter, TrainingData
 from scripts.lamda.tracking import TrackingConfig, TrackingSession
 
 
+# Capture code, contract, dependency, and checkout provenance for model replay.
 def environment_manifest():
+    # Treat unavailable Git metadata as missing provenance rather than a training failure.
     def git(*args):
         result = subprocess.run(["git", "-c", f"safe.directory={ROOT.as_posix()}", *args],
                                 cwd=ROOT, capture_output=True, text=True, check=False)
@@ -41,6 +43,7 @@ def environment_manifest():
             "packages": packages}
 
 
+# Preserve shard row order while collecting metadata and validated model scores.
 def score(model: FittedModel, directory: Path, stems):
     metadata, predictions = [], []
     for matrix, meta in cached(directory, stems):
@@ -101,11 +104,15 @@ def train(source: IcebergInput, output: Path, *, policy: SplitPolicy = SplitPoli
             parent.artifact(directory / "manifest.json", "data_manifest")
             parent.metrics({"data": {split: {"benign": count[0], "malware": count[1]}
                                      for split, count in data["counts"].items()}})
+            # Release only certified training shards to adapters; held-out partitions stay with
+            # the orchestrator.
             training = TrainingData(directory, tuple(data["shards"]["train"]),
                                     tuple(data["counts"]["train"]), len(source.contract["columns"]))
             best_model, best_ap, best_validation = None, -1.0, None
             selected_parameters, selected_path, selected_run_id = None, None, None
             candidates = []
+            # Fit and track each candidate separately, then select using validation average
+            # precision.
             for index, parameters in enumerate(configurations):
                 candidate_dir = output / "candidates" / str(index)
                 candidate_dir.mkdir(parents=True)
@@ -136,6 +143,7 @@ def train(source: IcebergInput, output: Path, *, policy: SplitPolicy = SplitPoli
                         selected_run_id = run.run_id
             validation, val_scores = best_validation
             threshold = choose_threshold(validation["label"].to_numpy(), val_scores)
+            # Use the test partition only after model and threshold selection are complete.
             test, test_scores = score(best_model, directory, data["shards"]["test"])
             test_y = test["label"].to_numpy()
             years = np.array([m[:4] for m in test["year_month"].to_pylist()])
@@ -155,6 +163,8 @@ def train(source: IcebergInput, output: Path, *, policy: SplitPolicy = SplitPoli
                 report["test_at_0_5"] = metrics(test_y, test_scores, 0.5)
             if adapter.name == "sgd":
                 report["selected_alpha"] = selected_parameters["alpha"]
+            # Promote the selected artifact and record predictions, metrics, hashes, and
+            # provenance for replay.
             model_path = output / "model.joblib"
             shutil.copyfile(selected_path, model_path)
             score_column = "malware_probability" if kind == "probability" else "anomaly_score"
@@ -193,6 +203,8 @@ def train(source: IcebergInput, output: Path, *, policy: SplitPolicy = SplitPoli
         raise
 
 
+# Apply the artifact-frozen input contract and threshold, including the legacy artifact
+# compatibility path.
 def predict(artifact, batch):
     version = artifact.get("format_version")
     if version not in (1, 2):

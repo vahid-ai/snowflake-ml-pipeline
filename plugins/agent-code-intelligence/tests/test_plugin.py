@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Validate plugin manifests and discovery metadata, then smoke-test rendered MCP profiles and
+# routing.
 from pathlib import Path
 import json, re, subprocess, sys, tempfile, os
 import yaml
@@ -27,6 +29,8 @@ assert "\nmodel: haiku\n" in agent
 assert "\n  - agent-code-intelligence:codebase-intelligence-router\n" in agent
 assert "\n  - Write\n" in agent and "\n  - Edit\n" in agent
 
+# Discover packaged skills dynamically and validate names/descriptions so new skills participate
+# in plugin checks.
 skills = list((ROOT/"skills").glob("*/SKILL.md"))
 assert len(skills) >= 10
 for p in skills:

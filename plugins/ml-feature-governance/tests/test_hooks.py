@@ -17,7 +17,10 @@ POST_WRITE = PLUGIN / "scripts" / "validate_after_write.py"
 SESSION = PLUGIN / "scripts" / "session_context.py"
 
 
+# Verify host payload routing and enforcement at the pre-write, post-write, and session-context
+# boundaries.
 class HookTests(unittest.TestCase):
+    # Drive the configured hook command using a synthetic host event.
     def dispatch(self, event, payload):
         config = json.loads((PLUGIN / "hooks/hooks.json").read_text())
         results = []
@@ -55,6 +58,7 @@ class HookTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertIn("invalid/ambiguous output type", result.stderr)
 
+    # Invoke the pre-write guard directly for targeted path-protection assertions.
     def run_guard(
         self, project: Path, file_path: Path | None = None, payload: dict[str, object] | None = None
     ) -> subprocess.CompletedProcess[str]:

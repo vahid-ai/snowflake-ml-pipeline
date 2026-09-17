@@ -11,7 +11,11 @@ PLUGIN = Path(__file__).resolve().parents[1]
 VALIDATOR = PLUGIN / "scripts" / "featurectl.py"
 TEMPLATE = PLUGIN / "templates" / "project" / "feature-platform"
 
+# Mutate isolated canonical fixtures to verify that each semantic contract violation is
+# rejected.
 class FeatureCtlTests(unittest.TestCase):
+    # Copy the starter project so each test can introduce one violation without changing shared
+    # fixtures.
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.project = Path(self.tmp.name)
@@ -20,6 +24,7 @@ class FeatureCtlTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    # Run the actual validator CLI and capture diagnostics plus exit status.
     def run_validate(self):
         return subprocess.run(
             [sys.executable, str(VALIDATOR), "validate", "--project-dir", str(self.project)],

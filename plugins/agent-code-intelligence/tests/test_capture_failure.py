@@ -11,7 +11,10 @@ import unittest
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/capture_failure.py"
 
 
+# Exercise capture as a subprocess so environment gates, input parsing, and persisted redaction
+# are tested together.
 class CaptureFailureTests(unittest.TestCase):
+    # Isolate plugin data, submit a synthetic failed-tool event, and inspect the stored record.
     def capture(self, event, enabled=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "capture"

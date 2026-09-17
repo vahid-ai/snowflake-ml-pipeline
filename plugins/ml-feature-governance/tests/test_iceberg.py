@@ -6,7 +6,10 @@ spec = importlib.util.spec_from_file_location('featurectl', Path(__file__).resol
 ctl = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ctl)
 
+# Check that storage references preserve table-scoped identity and keep model semantics outside
+# Iceberg metadata.
 class IcebergTests(unittest.TestCase):
+    # Collect reference-validation diagnostics for a single candidate storage binding.
     def check(self, value, field=True):
         errors = []
         ctl.validate_iceberg_reference(value, 'test', errors, field)

@@ -1,4 +1,5 @@
 snowflake_ml_pipeline:
+  # Resolve connection and optional authentication settings from the invoking environment.
   target: dev
   outputs:
     dev:

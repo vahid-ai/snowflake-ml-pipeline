@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Pre-write hook: require edits to canonical or plugin sources instead of generated/managed
+# targets.
 import sys
 
 from hook_utils import edited_paths, inside, project_root, read_payload
@@ -9,6 +11,7 @@ paths = edited_paths(payload, project)
 if not paths:
     sys.exit(0)
 
+# Protect generated output, fitted state, and installed tooling from direct editor writes.
 protected = [
     (project / "feature-platform" / "generated").resolve(),
     (project / ".feature-platform" / "state").resolve(),
