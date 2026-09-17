@@ -1,0 +1,5 @@
+# Managed governance files must match their plugin sources and stored SHA-256 hashes.
+/.feature-platform/tools/featurectl.py text eol=lf
+/.cursor/rules/ml-feature-governance.mdc text eol=lf
+/plugins/ml-feature-governance/scripts/featurectl.py text eol=lf
+/plugins/ml-feature-governance/templates/client/cursor/feature-governance.mdc text eol=lf

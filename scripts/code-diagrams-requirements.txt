@@ -1,0 +1,3 @@
+# Serena v1.5.3: pin the internal SolidLSP API to a reviewed source revision.
+serena-agent @ git+https://github.com/oraios/serena.git@2449313c0d7427275c4c66aedff7d4881782f713
+jedi-language-server==0.47.0

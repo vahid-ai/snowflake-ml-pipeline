@@ -193,3 +193,11 @@ uv run python -m bench.run
 
 Benchmark metrics and flame graphs are written under `bench/artifacts/`, which
 is ignored by Git.
+
+## Code architecture diagrams
+
+The **Code diagrams** GitHub Action uses Serena's Python LSP to generate module,
+import/export, and function/method call diagrams on pull requests and pushes to
+`main`. Download the `code-diagrams` artifact from a run and open `modules.svg`
+or its `README.md` index. See [code diagrams](docs/code_diagrams.md) for local
+usage, output formats, and static-analysis limitations.

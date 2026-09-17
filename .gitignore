@@ -9,6 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
+# Code diagram tooling and generated artifacts
+.diagram-tools/
+artifacts/code-diagrams/
+
 # Local credentials
 .env
 
