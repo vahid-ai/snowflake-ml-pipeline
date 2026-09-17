@@ -1,0 +1,35 @@
+spec_version: '1.0'
+experiments:
+- id: lamda.malware_detection
+  version: 1
+  base_feature_set: lamda.malware_baseline@1
+  variants:
+  - name: sgd_log_loss
+    alphas:
+    - 0.0001
+    - 0.001
+    epochs: 3
+  split:
+    id: lamda.published_hash_validation@1
+    published_test: untouched
+    validation: SHA256 UTF-8(seed decimal + colon + lowercase APK SHA256), first 8
+      bytes unsigned big-endian modulo 10000 < 2000; only from published train
+    duplicates: Reject repeated APK hashes across or within splits before fitting
+    temporal_option: 'lamda.collection_month@1: train <= train_through, validation
+      <= validation_through, test later; ignore published split'
+  model_selection: Validation average precision; threshold maximizing validation F1;
+    test only after selection
+  execution_manifest_requires:
+  - dataset_snapshot
+  - table_uuid
+  - schema_id
+  - field_ids
+  - split_version
+  - resolved_feature_set
+  - fitted_artifacts
+  - backend_profile
+  - code_commit
+  - source_digest
+  - environment_lock
+  - seeds
+  - row_counts

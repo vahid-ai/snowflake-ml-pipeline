@@ -1,0 +1,7 @@
+spec_version: '1.0'
+entities:
+- id: apk
+  join_keys:
+  - name: hash
+    type: utf8
+    nullable: false

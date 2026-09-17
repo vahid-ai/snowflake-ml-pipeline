@@ -12,6 +12,12 @@ wheels/
 # Local credentials
 .env
 
+# MLflow defaults used by ad-hoc clients (the pipeline defaults under data/).
+mlruns/
+mlartifacts/
+mlflow.db
+mlflow.db-*
+
 # Local scratch data (except the committed LAMDA feature dictionary)
 data/*
 !data/lamda_feature_descriptions.json
@@ -29,3 +35,6 @@ bench/artifacts/
 # Local fitted state; keep the scaffold marker only.
 .feature-platform/state/*
 !.feature-platform/state/.gitkeep
+
+# Generated observed raw metadata is snapshot-specific and can be large.
+feature-platform/generated/raw_profiles/
