@@ -158,9 +158,13 @@ run is tracked in MLflow with separate training, validation and test partitions.
 Model artifacts, evaluation metrics, and replay manifests are also saved locally.
 Live training requires R2 credentials.
 
+The example opts into `lamda.malware_presence@1`, which maps positive counts to
+`1` and zero to `0`. Omitting this option uses the strict binary contract; its
+audit fails on the known values of `2` in the verified R2 snapshot.
+
 ```powershell
 uv sync --locked --extra ml
-infisical run --projectId=0cfed731-cdf4-46b8-b831-2d74be495575 --env=dev -- uv run --locked --extra ml python scripts/train_lamda_malware.py
+infisical run --projectId=0cfed731-cdf4-46b8-b831-2d74be495575 --env=dev -- uv run --locked --extra ml python scripts/train_lamda_malware.py --feature-set lamda.malware_presence@1
 ```
 
 Add `--extra lightning` to install/run neural models and select `--model mlp` or

@@ -25,7 +25,9 @@ def environment_manifest():
         result = subprocess.run(["git", "-c", f"safe.directory={ROOT.as_posix()}", *args],
                                 cwd=ROOT, capture_output=True, text=True, check=False)
         return result.stdout.strip() if result.returncode == 0 else None
-    files = [*ROOT.glob("scripts/**/*.py"), *ROOT.glob("feature-platform/**/*.yaml"),
+    canonical_yaml = [p for p in ROOT.glob("feature-platform/**/*.yaml")
+                      if not p.is_relative_to(ROOT / "feature-platform/generated")]
+    files = [*ROOT.glob("scripts/**/*.py"), *canonical_yaml,
              ROOT / "pyproject.toml", ROOT / "uv.lock"]
     packages = {}
     for name in ("scikit-learn", "scipy", "numpy", "pyarrow", "pyiceberg", "joblib", "pyyaml",

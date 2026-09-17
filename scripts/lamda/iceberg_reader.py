@@ -25,8 +25,16 @@ from pyiceberg.types import ListType, MapType
 
 
 def batches(table, scan, batch_size):
-    projection = scan.projection()
     metadata = scan.table_metadata
+    snapshot = scan.snapshot()
+    if snapshot is not None and snapshot.schema_id is not None and snapshot.schema_id != metadata.current_schema_id:
+        # Planning evaluators also bind against metadata.schema(). Give this scan
+        # the full historical schema, including predicates outside its projection.
+        # A fresh scan avoids stale evaluator caches without changing the table.
+        metadata = metadata.model_copy(update={"current_schema_id": snapshot.schema_id})
+        metadata.schema()  # Fail explicitly if the snapshot's schema is missing.
+        scan = scan.update(table_metadata=metadata)
+    projection = scan.projection()
     bound = bind(metadata.schema(), scan.row_filter, case_sensitive=scan.case_sensitive)
     ids = {i for i in projection.field_ids if not isinstance(projection.find_type(i), (MapType, ListType))}
     ids.update(extract_field_ids(bound))

@@ -20,6 +20,7 @@ changes:
     required: [contract, dag, leakage, portability, golden_differential, backward_compatibility]
     evidence:
       baseline: featurectl doctor and validate passed before edits.
+      pr_review_fixes: All 70 repository tests and featurectl validation passed on September 17, 2026. Regression tests first reproduced and then verified stable source hashes across generated audit history and historical snapshot filtering after dataset/config column renames, including partition planning and narrow projections. Local metadata copies preserve the source table. Training examples explicitly opt into presence features; canonical feature semantics, fitted-state boundaries and the strict CLI default are unchanged.
       canonical_validation: featurectl doctor and validate passed after canonical changes; original baseline feature IDs and values were preserved.
       tests: 68 repository tests passed. Additional targeted reader and contract checks passed. Tests include binary 2/3/4/5, handled/unhandled nulls, categories, bounds, overflow, precision loss, DAG/layout errors, duplicate and overlapping splits, interrupted scans, samples, immutable metadata publication, and MLflow failure gates.
       architecture_review: Raw observations are generated separately from required contracts. Additive raw-count and presence nodes preserve old identities. Model artifacts freeze definitions and ordered lineage. Publication appends a companion table rather than replacing descriptive metadata.

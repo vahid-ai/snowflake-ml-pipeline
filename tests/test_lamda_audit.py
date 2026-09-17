@@ -22,7 +22,7 @@ from scripts.lamda.audit import AuditError, Issues, Profile, require_certified, 
 from scripts.lamda.contracts import ContractError, Plan, validate_tensor
 from scripts.lamda.data import IcebergInput, SplitPolicy, load_contract, stage
 from scripts.lamda.observations import publish_iceberg, publish_local
-from scripts.lamda.pipeline import predict, train
+from scripts.lamda.pipeline import environment_manifest, predict, train
 from scripts.lamda.tracking import TrackingConfig
 from scripts.load_lamda_local_iceberg import open_local_catalog
 from tests.test_lamda_ml import fixture
@@ -491,6 +491,64 @@ class AuditTests(unittest.TestCase):
             stage(source, self.root / "cache", SplitPolicy(), 53)
         manifest = json.loads((self.root / "cache/manifest.json").read_text())
         self.assertFalse(manifest["certified"])
+
+    def test_environment_hashes_ignore_generated_history_but_track_real_inputs(self):
+        for name in ("scripts/worker.py", "feature-platform/features/test.yaml", "pyproject.toml", "uv.lock"):
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("original\n")
+        with patch("scripts.lamda.pipeline.ROOT", self.root):
+            original = environment_manifest()["source_sha256"]
+            generated = self.root / "feature-platform/generated/raw_profiles/selection"
+            generated.mkdir(parents=True)
+            for name in ("latest.yaml", "snapshot-audit-1.yaml", "snapshot-audit-2.yaml"):
+                (generated / name).write_text("audit: changing-history\n")
+            self.assertEqual(environment_manifest()["source_sha256"], original)
+            (generated / "latest.yaml").write_text("audit: a-new-run\n")
+            self.assertEqual(environment_manifest()["source_sha256"], original)
+            for name in ("scripts/worker.py", "feature-platform/features/test.yaml", "pyproject.toml", "uv.lock"):
+                with self.subTest(input=name):
+                    path = self.root / name
+                    path.write_text("changed\n")
+                    self.assertNotEqual(environment_manifest()["source_sha256"][str(Path(name))], original[str(Path(name))])
+                    path.write_text("original\n")
+
+    def test_pinned_filter_column_renames_preserve_partition_planning_and_projection(self):
+        from pyiceberg.expressions import And, EqualTo
+        from scripts.lamda.iceberg_reader import batches
+        catalog = open_local_catalog(self.root)
+        try:
+            catalog.create_namespace("raw_lamda")
+            table = catalog.create_table("raw_lamda.lamda_samples", schema=fixture().schema)
+            with table.update_spec() as update:
+                update.add_identity("config_name")
+            other = replace(fixture(40, 400), "config_name", ["Other"] * 40)
+            table.append(pa.concat_tables([fixture(), other]))
+            old = table.current_snapshot().snapshot_id
+            with table.update_schema() as update:
+                update.rename_column("dataset_id", "renamed_dataset")
+                update.rename_column("config_name", "renamed_config")
+            data = fixture(40, 600)
+            data = data.rename_columns([{"dataset_id": "renamed_dataset", "config_name": "renamed_config"}.get(name, name)
+                                        for name in data.column_names])
+            table.append(data)
+            current_schema_id = table.metadata.current_schema_id
+            current_snapshot_id = table.current_snapshot().snapshot_id
+            source = IcebergInput(table, contract(), old)
+            actual = pa.concat_tables(list(source.audit_batches(31)))
+            self.assertEqual(actual["hash"].to_pylist(), fixture()["hash"].to_pylist())
+            # Predicate columns need not be among the returned columns.
+            narrow = table.scan(snapshot_id=old, selected_fields=("feat_0",),
+                row_filter=And(EqualTo("dataset_id", "IQSeC-Lab/LAMDA"), EqualTo("config_name", "Baseline")))
+            projected = pa.Table.from_batches(list(batches(table, narrow, 31)))
+            self.assertEqual(projected.column_names, ["feat_0"])
+            self.assertEqual(projected["feat_0"].to_pylist(), fixture()["feat_0"].to_pylist())
+            self.assertEqual(table.metadata.current_schema_id, current_schema_id)
+            self.assertEqual(narrow.table_metadata.current_schema_id, current_schema_id)
+            self.assertEqual(table.current_snapshot().snapshot_id, current_snapshot_id)
+            self.assertNotEqual(current_snapshot_id, old)
+        finally:
+            catalog.close()
 
     def tracking(self):
         config = TrackingConfig(uri="sqlite:///:memory:", experiment="audit-" + uuid4().hex)
