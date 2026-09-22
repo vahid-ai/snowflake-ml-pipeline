@@ -26,6 +26,20 @@ LAMDA ingestion tables. Register actual source schemas and feature contracts bef
 
 See `docs/plugins.md` for client setup and validation commands.
 
+## Ponytail
+
+This repository enables [ponytail](https://github.com/DietrichGebert/ponytail) for Claude Code, Codex, and Cursor. When writing or changing code, stop at the first rung that holds:
+
+1. Does this need to exist? (YAGNI)
+2. Already in this codebase? Reuse it.
+3. Stdlib does it? Use it.
+4. Native platform feature? Use it.
+5. Installed dependency? Use it.
+6. One line? One line.
+7. Only then: the minimum that works.
+
+Do not cut trust-boundary validation, data-loss handling, security, or accessibility. Native plugin install still follows each client's trust prompts; this file is the instruction-only fallback.
+
 <!-- ml-feature-governance:start -->
 ## ML Feature Governance
 

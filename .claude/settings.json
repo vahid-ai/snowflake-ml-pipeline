@@ -2,10 +2,17 @@
   "extraKnownMarketplaces": {
     "snowflake-ml-pipeline": {
       "source": {"source": "directory", "path": "."}
+    },
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
     }
   },
   "enabledPlugins": {
     "ml-feature-governance@snowflake-ml-pipeline": true,
-    "agent-code-intelligence@snowflake-ml-pipeline": true
+    "agent-code-intelligence@snowflake-ml-pipeline": true,
+    "ponytail@ponytail": true
   }
 }

@@ -1,14 +1,17 @@
 # Repository plugins
 
-Both plugins apply to work throughout `snowflake-ml-pipeline`. Their source packages live in
+The first-party plugins apply to work throughout `snowflake-ml-pipeline`. Their source packages live in
 `plugins/ml-feature-governance/` and `plugins/agent-code-intelligence/`; there is no repository `ml/` scope.
+[Ponytail](https://github.com/DietrichGebert/ponytail) is enabled as a third-party repository plugin.
 
 ## Shared repository behavior
 
-- Root `AGENTS.md` directs Codex and other compatible agents to both plugins' skills and policies.
+- Root `AGENTS.md` directs Codex and other compatible agents to both first-party plugins' skills and policies,
+  and to ponytail's YAGNI ladder.
 - Root `CLAUDE.md` imports those instructions. `.claude/settings.json` registers this checkout's marketplace
-  and enables both plugins for this project, subject to the client's normal trust/install prompts.
-- Cursor's always-on project rules point to the same guidance.
+  plus the official ponytail marketplace, and enables those plugins for this project, subject to the
+  client's normal trust/install prompts.
+- Cursor's always-on project rules include the first-party guidance and `.cursor/rules/ponytail.mdc`.
 - ML governance is initialized at the root: `feature-platform/` holds canonical contracts and
   `.feature-platform/tools/featurectl.py` validates them. The initial source and feature definitions are starter
   examples supplied by the plugin. They do not assert that the existing LAMDA tables have those schemas.
@@ -19,10 +22,12 @@ remain subject to each client's trust settings; repository instructions and CI v
 
 ## Native Codex plugin surfaces
 
-The repository catalog is `.agents/plugins/marketplace.json`. To install its native plugin surfaces in a Codex
-environment, add this repository as a marketplace and select both plugins in that environment's plugin manager.
-The catalog alone does not install plugins into every contributor's account. Root `AGENTS.md` already provides
-the repository-wide workflow for agents that read repository instructions.
+The repository catalog is `.agents/plugins/marketplace.json`. It lists the two first-party plugins and the
+official ponytail Git source. Trusted checkouts also enable ponytail from `.codex/config.toml`. To install
+the first-party plugin surfaces in a Codex environment, add this repository as a marketplace and select
+those plugins in that environment's plugin manager. The catalog alone does not install plugins into every
+contributor's account. Root `AGENTS.md` already provides the repository-wide workflow for agents that read
+repository instructions.
 
 ## Validation
 
