@@ -1,6 +1,11 @@
-# Enable ponytail from this repository's marketplace only.
-# Do not also register DietrichGebert/ponytail as a second marketplace;
-# Codex treats ponytail@ponytail as a distinct plugin identity.
+# Register this repository's marketplace so ponytail@snowflake-ml-pipeline
+# resolves in a fresh trusted Codex checkout. Do not also register the
+# standalone DietrichGebert/ponytail marketplace; Codex treats
+# ponytail@ponytail as a distinct plugin identity.
+
+[marketplaces.snowflake-ml-pipeline]
+source = "https://github.com/vahid-ai/snowflake-ml-pipeline.git"
+source_type = "git"
 
 [plugins."ponytail@snowflake-ml-pipeline"]
 enabled = true

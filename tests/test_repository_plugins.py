@@ -64,6 +64,9 @@ class RepositoryPluginTests(unittest.TestCase):
         self.assertEqual(remote[0]["policy"]["installation"], "INSTALLED_BY_DEFAULT")
 
         config = (ROOT / ".codex/config.toml").read_text(encoding="utf-8")
+        self.assertIn("[marketplaces.snowflake-ml-pipeline]", config)
+        self.assertIn("https://github.com/vahid-ai/snowflake-ml-pipeline.git", config)
+        self.assertIn('source_type = "git"', config)
         self.assertIn('[plugins."ponytail@snowflake-ml-pipeline"]', config)
         self.assertIn("enabled = true", config)
         self.assertNotIn("[marketplaces.ponytail]", config)
