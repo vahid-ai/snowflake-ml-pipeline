@@ -9,6 +9,14 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = {"ml-feature-governance", "agent-code-intelligence"}
+PONYTAIL_REPO = "DietrichGebert/ponytail"
+PONYTAIL_GIT = "https://github.com/DietrichGebert/ponytail.git"
+
+
+def _source_kind(source: object) -> str:
+    if isinstance(source, dict):
+        return str(source.get("source", "local"))
+    return "local"
 
 
 # Verify plugin discovery, client activation, managed-file identity, and validation from the
@@ -21,8 +29,9 @@ class RepositoryPluginTests(unittest.TestCase):
         ):
             catalog = json.loads((ROOT / catalog_path).read_text())
             self.assertEqual(catalog["name"], "snowflake-ml-pipeline")
-            self.assertEqual({p["name"] for p in catalog["plugins"]}, NAMES)
-            for plugin in catalog["plugins"]:
+            local_plugins = [p for p in catalog["plugins"] if _source_kind(p["source"]) == "local"]
+            self.assertEqual({p["name"] for p in local_plugins}, NAMES)
+            for plugin in local_plugins:
                 source = plugin["source"]
                 path = source["path"] if isinstance(source, dict) else source
                 manifest = json.loads((ROOT / path / manifest_dir / "plugin.json").read_text())
@@ -32,9 +41,34 @@ class RepositoryPluginTests(unittest.TestCase):
         settings = json.loads((ROOT / ".claude/settings.json").read_text())
         self.assertEqual(settings["extraKnownMarketplaces"]["snowflake-ml-pipeline"]["source"],
                          {"source": "directory", "path": "."})
-        self.assertEqual(settings["enabledPlugins"],
-                         {f"{name}@snowflake-ml-pipeline": True for name in NAMES})
+        self.assertEqual(settings["extraKnownMarketplaces"]["ponytail"]["source"],
+                         {"source": "github", "repo": PONYTAIL_REPO})
+        enabled = {f"{name}@snowflake-ml-pipeline": True for name in NAMES}
+        enabled["ponytail@ponytail"] = True
+        self.assertEqual(settings["enabledPlugins"], enabled)
         self.assertIn("@AGENTS.md", (ROOT / "CLAUDE.md").read_text())
+
+    def test_ponytail_is_enabled_for_codex_and_cursor(self):
+        catalog = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
+        remote = [p for p in catalog["plugins"] if p["name"] == "ponytail"]
+        self.assertEqual(len(remote), 1)
+        self.assertEqual(remote[0]["source"], {
+            "source": "url",
+            "url": PONYTAIL_GIT,
+            "ref": "main",
+        })
+        self.assertEqual(remote[0]["policy"]["installation"], "INSTALLED_BY_DEFAULT")
+
+        config = (ROOT / ".codex/config.toml").read_text(encoding="utf-8")
+        self.assertIn(PONYTAIL_GIT, config)
+        self.assertIn('[plugins."ponytail@ponytail"]', config)
+        self.assertIn('[plugins."ponytail@snowflake-ml-pipeline"]', config)
+        self.assertGreaterEqual(config.count("enabled = true"), 2)
+
+        rule = (ROOT / ".cursor/rules/ponytail.mdc").read_text(encoding="utf-8")
+        self.assertIn("alwaysApply: true", rule)
+        self.assertIn("YAGNI", rule)
+        self.assertIn("## Ponytail", (ROOT / "AGENTS.md").read_text(encoding="utf-8"))
 
     def test_managed_governance_files_match_plugin_and_lock(self):
         lock = json.loads((ROOT / ".feature-platform/governance.lock.json").read_text())

@@ -1,0 +1,12 @@
+# Enable the official ponytail plugin for trusted Codex checkouts of this repo.
+# The same plugin is also listed in .agents/plugins/marketplace.json.
+
+[marketplaces.ponytail]
+source = "https://github.com/DietrichGebert/ponytail.git"
+source_type = "git"
+
+[plugins."ponytail@ponytail"]
+enabled = true
+
+[plugins."ponytail@snowflake-ml-pipeline"]
+enabled = true
