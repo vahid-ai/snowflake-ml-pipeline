@@ -9,7 +9,7 @@ The first-party plugins apply to work throughout `snowflake-ml-pipeline`. Their 
 - Root `AGENTS.md` directs Codex and other compatible agents to both first-party plugins' skills and policies,
   and to ponytail's YAGNI ladder.
 - Root `CLAUDE.md` imports those instructions. `.claude/settings.json` registers this checkout's marketplace
-  plus the official ponytail marketplace, and enables those plugins for this project, subject to the
+  and enables the first-party plugins plus `ponytail@snowflake-ml-pipeline`, subject to the
   client's normal trust/install prompts.
 - Cursor's always-on project rules include the first-party guidance and `.cursor/rules/ponytail.mdc`.
 - ML governance is initialized at the root: `feature-platform/` holds canonical contracts and
@@ -23,11 +23,12 @@ remain subject to each client's trust settings; repository instructions and CI v
 ## Native Codex plugin surfaces
 
 The repository catalog is `.agents/plugins/marketplace.json`. It lists the two first-party plugins and the
-official ponytail Git source. Trusted checkouts also enable ponytail from `.codex/config.toml`. To install
-the first-party plugin surfaces in a Codex environment, add this repository as a marketplace and select
-those plugins in that environment's plugin manager. The catalog alone does not install plugins into every
-contributor's account. Root `AGENTS.md` already provides the repository-wide workflow for agents that read
-repository instructions.
+official ponytail Git source as `ponytail@snowflake-ml-pipeline`. Trusted checkouts enable that single
+identity from `.codex/config.toml`; do not also add the standalone `ponytail@ponytail` marketplace. To
+install the first-party plugin surfaces in a Codex environment, add this repository as a marketplace and
+select those plugins in that environment's plugin manager. The catalog alone does not install plugins into
+every contributor's account. Root `AGENTS.md` already provides the repository-wide workflow for agents
+that read repository instructions.
 
 ## Validation
 

@@ -39,14 +39,18 @@ class RepositoryPluginTests(unittest.TestCase):
 
     def test_claude_project_settings_enable_repository_plugins(self):
         settings = json.loads((ROOT / ".claude/settings.json").read_text())
-        self.assertEqual(settings["extraKnownMarketplaces"]["snowflake-ml-pipeline"]["source"],
-                         {"source": "directory", "path": "."})
-        self.assertEqual(settings["extraKnownMarketplaces"]["ponytail"]["source"],
-                         {"source": "github", "repo": PONYTAIL_REPO})
+        self.assertEqual(settings["extraKnownMarketplaces"], {
+            "snowflake-ml-pipeline": {"source": {"source": "directory", "path": "."}},
+        })
         enabled = {f"{name}@snowflake-ml-pipeline": True for name in NAMES}
-        enabled["ponytail@ponytail"] = True
+        enabled["ponytail@snowflake-ml-pipeline"] = True
         self.assertEqual(settings["enabledPlugins"], enabled)
         self.assertIn("@AGENTS.md", (ROOT / "CLAUDE.md").read_text())
+
+        claude_catalog = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+        remote = [p for p in claude_catalog["plugins"] if p["name"] == "ponytail"]
+        self.assertEqual(len(remote), 1)
+        self.assertEqual(remote[0]["source"], {"source": "github", "repo": PONYTAIL_REPO})
 
     def test_ponytail_is_enabled_for_codex_and_cursor(self):
         catalog = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
@@ -60,10 +64,10 @@ class RepositoryPluginTests(unittest.TestCase):
         self.assertEqual(remote[0]["policy"]["installation"], "INSTALLED_BY_DEFAULT")
 
         config = (ROOT / ".codex/config.toml").read_text(encoding="utf-8")
-        self.assertIn(PONYTAIL_GIT, config)
-        self.assertIn('[plugins."ponytail@ponytail"]', config)
         self.assertIn('[plugins."ponytail@snowflake-ml-pipeline"]', config)
-        self.assertGreaterEqual(config.count("enabled = true"), 2)
+        self.assertIn("enabled = true", config)
+        self.assertNotIn("[marketplaces.ponytail]", config)
+        self.assertNotIn('[plugins."ponytail@ponytail"]', config)
 
         rule = (ROOT / ".cursor/rules/ponytail.mdc").read_text(encoding="utf-8")
         self.assertIn("alwaysApply: true", rule)
