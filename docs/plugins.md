@@ -23,12 +23,12 @@ remain subject to each client's trust settings; repository instructions and CI v
 ## Native Codex plugin surfaces
 
 The repository catalog is `.agents/plugins/marketplace.json`. It lists the two first-party plugins and the
-official ponytail Git source as `ponytail@snowflake-ml-pipeline`. Trusted checkouts enable that single
-identity from `.codex/config.toml`; do not also add the standalone `ponytail@ponytail` marketplace. To
-install the first-party plugin surfaces in a Codex environment, add this repository as a marketplace and
-select those plugins in that environment's plugin manager. The catalog alone does not install plugins into
-every contributor's account. Root `AGENTS.md` already provides the repository-wide workflow for agents
-that read repository instructions.
+official ponytail Git source as `ponytail@snowflake-ml-pipeline`. Trusted checkouts register this
+repository as a marketplace in `.codex/config.toml` and enable that single identity. Do not also add the
+standalone `ponytail@ponytail` marketplace. To install the first-party plugin surfaces in a Codex
+environment, add this repository as a marketplace and select those plugins in that environment's plugin
+manager. Root `AGENTS.md` already provides the repository-wide workflow for agents that read repository
+instructions.
 
 ## Validation
 
