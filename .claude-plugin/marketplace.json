@@ -11,6 +11,14 @@
       "name": "agent-code-intelligence",
       "source": "./plugins/agent-code-intelligence",
       "description": "Repository-wide code retrieval and verified memory guidance."
+    },
+    {
+      "name": "ponytail",
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      },
+      "description": "Prefer the smallest correct change: YAGNI, stdlib first, no unrequested abstractions."
     }
   ]
 }
