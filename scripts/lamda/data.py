@@ -27,6 +27,12 @@ def digest(path: Path) -> str:
     return h.hexdigest()
 
 
+# Pin git-canonical LF bytes. Windows CRLF checkouts of the same JSON must not
+# look like a new feature dictionary.
+def dictionary_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 # Reject non-finite numbers so manifests remain portable, strict JSON.
 def write_json(path: Path, value) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n", encoding="utf-8")
@@ -60,7 +66,7 @@ def load_contract(feature_set="lamda.malware_baseline@1") -> dict:
         raise ValueError("Canonical feature count/order is inconsistent")
     if fs["output_layout"]["numerical"]["features"] != fs["features"]:
         raise ValueError("Canonical model layout differs from feature order")
-    if digest(ROOT / "data/lamda_feature_descriptions.json") != contract["dictionary_sha256"]:
+    if dictionary_digest(ROOT / "data/lamda_feature_descriptions.json") != contract["dictionary_sha256"]:
         raise ValueError("Feature dictionary changed; register a new feature-set version")
     return {**contract, "id": f"{fs['id']}@{fs['version']}",
             "features": fs["features"], "columns": columns, "dtype": "float32", "definitions": selected}

@@ -21,6 +21,7 @@ from sklearn.metrics import f1_score
 from mlflow import MlflowClient
 from scripts.lamda.tracking import TrackingConfig
 
+from scripts.lamda.data import dictionary_digest
 from scripts.lamda_ml import (
     IcebergInput, SplitPolicy, binary_matrix, choose_threshold, load_contract,
     metrics, predict, stage, train,
@@ -68,8 +69,11 @@ class BinaryTests(unittest.TestCase):
 
     def test_canonical_mapping_is_complete_and_config_specific(self):
         contract = load_contract()
+        presence = load_contract("lamda.malware_presence@1")
         self.assertEqual(contract["columns"], [f"feat_{i}" for i in range(4561)])
         self.assertEqual(contract["config_name"], "Baseline")
+        self.assertEqual(presence["columns"], contract["columns"])
+        self.assertEqual(presence["dictionary_sha256"], contract["dictionary_sha256"])
         self.assertTrue(all(ref.endswith("@1") for ref in contract["features"]))
         # Exercise the complete production-width projection, not only the fixture.
         row = pa.table({name: pa.array([i % 2], type=pa.int64())
@@ -77,6 +81,19 @@ class BinaryTests(unittest.TestCase):
         matrix = binary_matrix(row, contract["columns"])
         self.assertEqual(matrix.shape, (1, 4561))
         self.assertEqual(matrix.nnz, 2280)
+
+    def test_dictionary_digest_ignores_crlf_checkout_bytes(self):
+        source = Path(__file__).resolve().parents[1] / "data" / "lamda_feature_descriptions.json"
+        lf = source.read_bytes().replace(b"\r\n", b"\n")
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            lf_path, crlf_path = root / "lf.json", root / "crlf.json"
+            lf_path.write_bytes(lf)
+            crlf_path.write_bytes(lf.replace(b"\n", b"\r\n"))
+            expected = load_contract()["dictionary_sha256"]
+            self.assertEqual(dictionary_digest(lf_path), expected)
+            self.assertEqual(dictionary_digest(crlf_path), expected)
+            self.assertNotEqual(hashlib.sha256(crlf_path.read_bytes()).hexdigest(), expected)
 
     def test_splits_and_thresholds(self):
         policy = SplitPolicy()

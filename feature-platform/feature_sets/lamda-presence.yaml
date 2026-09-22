@@ -4573,7 +4573,7 @@ feature_sets:
     source: lamda_baseline_samples
     config_name: Baseline
     dataset_id: IQSeC-Lab/LAMDA
-    dictionary_sha256: ae9ddf8506dd59a21def8e990f5d47b8b618d436f1ee248759b401d538e4cec9
+    dictionary_sha256: d62f6219b41ca8f03423284639e0471a7c0111299878ef5b4d3cd03f2b24ac63
     shape:
     - 4561
     missing: error
